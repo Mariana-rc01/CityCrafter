@@ -95,13 +95,31 @@ class City:
         # Convention: algorithm(city, *args, **kwargs) -> solution
         solution = func(self, *args, **kwargs)
 
-        # Compute official score for the returned solution
-        score = self.get_score(solution)
-
-        return solution, score
-
+        return solution, self.get_score(solution)
 
     def get_score(self, solution):
+        placements = self._extract_placements(solution)
+        res = [p for p in placements if self.get_project(p["project_id"]).build_type == "R"]
+        util = [p for p in placements if self.get_project(p["project_id"]).build_type == "U"]
+
+        for p in placements:
+            p["hash_cells"] = self.get_project(p["project_id"]).absolute_hash_cells(p["top_left"])
+
+        total = 0
+        for r_p in res:
+            capacity = self.get_project(r_p["project_id"]).capacity
+            services_found = set()
+            for u_p in util:
+                u_type = self.get_project(u_p["project_id"]).service_type
+                if u_type in services_found: continue
+
+                # Optimization: check bounding boxes first (fast) before checking all cell pairs (slow)
+                if self._min_manhattan_optimized(r_p["hash_cells"], u_p["hash_cells"]) <= self.D:
+                    services_found.add(u_type)
+            total += capacity * len(services_found)
+        return total
+
+    def get_score_original(self, solution):
         """
         Computes the official score:
         For each residential building with capacity r, earn r points for each DISTINCT
@@ -220,3 +238,17 @@ class City:
                     if best == 0:
                         return 0
         return best
+
+    def _min_manhattan_optimized(self, cells_a, cells_b):
+        """Optimized version of min Manhattan distance with early pruning."""
+        min_d = 10**9
+        # Always iterate the smaller set first to minimize number of iterations (early pruning)
+        if len(cells_a) > len(cells_b): cells_a, cells_b = cells_b, cells_a
+        for a in cells_a:
+            for b in cells_b:
+                d = abs(a.r - b.r) + abs(a.c - b.c)
+                if d < min_d:
+                    min_d = d
+                if min_d <= self.D:
+                    return min_d
+        return min_d

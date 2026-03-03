@@ -1,216 +1,187 @@
 import random
 from coordinates import Coordinates
 
-def hill_climbing_boosted(city,
-                             max_iterations=5000,
-                             patience=300,
-                             min_delta=2,
-                             use_restart=False,
-                             max_restarts=1):
+
+def hill_climbing_boosted(city, max_iterations=10000, patience=500,
+                          min_delta=2, use_restart=True, max_restarts=2):
 
     def run_single_hc():
-        H, W = city.H, city.W
-        occupied = [[False]*W for _ in range(H)]
+        H, W, D = city.H, city.W, city.D
+
+        occupied = [[False] * W for _ in range(H)]
         placements = []
 
-        def can_place(b, r, c):
-            proj = city.get_project(b)
-            top_left = Coordinates(r, c)
-            if not proj.fits_in_grid(top_left, H, W):
+        # Helpers
+        def to_city_format():
+            return [(p[0], p[1], p[2]) for p in placements]  # b_id, r, c
+
+        def can_place(proj, r, c):
+            if r < 0 or c < 0:
                 return False
-            for cell in proj.absolute_hash_cells(top_left):
+            if r + proj.h > H or c + proj.w > W:
+                return False
+
+            cells = proj.absolute_hash_cells(Coordinates(r, c))
+            for cell in cells:
                 if occupied[cell.r][cell.c]:
                     return False
+            return cells
+
+        def place(b_id, r, c):
+            proj = city.get_project(b_id)
+            abs_cells = can_place(proj, r, c)
+            if abs_cells is False:
+                return False
+
+            for cell in abs_cells:
+                occupied[cell.r][cell.c] = True
+
+            placements.append([b_id, r, c, abs_cells])
             return True
 
-        def place(b, r, c):
-            proj = city.get_project(b)
-            for cell in proj.absolute_hash_cells(Coordinates(r, c)):
-                occupied[cell.r][cell.c] = True
-            placements.append((b, r, c))
-
         def remove(idx):
-            b, r, c = placements[idx]
-            proj = city.get_project(b)
-            for cell in proj.absolute_hash_cells(Coordinates(r, c)):
+            b_id, r, c, cells = placements.pop(idx)
+            for cell in cells:
                 occupied[cell.r][cell.c] = False
-            placements.pop(idx)
+            return b_id, r, c, cells
 
-        # Phase 1: Initial explosion with a structured pattern
-        print("-> Initial city explosion...")
-
-        # Find the best residential project (highest capacity relative to size)
+        # Initial State
+        print("Begin")
         best_res_id = max(
-            (pid for pid, proj in enumerate(city.projects) if proj.build_type=="R"),
-            key=lambda pid: city.get_project(pid).capacity / max(1, city.get_project(pid).h + city.get_project(pid).w))
-        best_res_proj = city.get_project(best_res_id)
+            (pid for pid, proj in enumerate(city.projects)
+             if proj.build_type == "R"),
+            key=lambda pid:
+            city.get_project(pid).capacity /
+            max(1, city.get_project(pid).h * city.get_project(pid).w)
+        )
 
-        # --- Collect one utility of each type ---
-        utility_types_seen = set()
-        best_utilities = []
+        best_utils = []
+        seen = set()
         for pid, proj in enumerate(city.projects):
-            if proj.build_type == "U" and proj.service_type not in utility_types_seen:
-                utility_types_seen.add(proj.service_type)
-                best_utilities.append(pid)
+            if proj.build_type == "U" and proj.service_type not in seen:
+                seen.add(proj.service_type)
+                best_utils.append(pid)
 
-        # Base cell size
-        cell_h = best_res_proj.h
-        cell_w = best_res_proj.w
-        for u_id in best_utilities:
-            u_proj = city.get_project(u_id)
-            cell_h = max(cell_h, u_proj.h)
-            cell_w = max(cell_w, u_proj.w)
+        res_proj = city.get_project(best_res_id)
+        res_h, res_w = res_proj.h, res_proj.w
 
-        # Fill the map in 3x3 blocks
-        block_h = cell_h * 3
-        block_w = cell_w * 3
-        util_idx = 0
-        for r in range(0, H, block_h):
-            for c in range(0, W, block_w):
-                # Block center: utility
-                u_id = best_utilities[util_idx % len(best_utilities)]
-                center_r = r + cell_h
-                center_c = c + cell_w
-                if can_place(u_id, center_r, center_c):
-                    place(u_id, center_r, center_c)
-                    util_idx += 1
-                # Residential around
-                for dr in [0, cell_h, cell_h*2]:
-                    for dc in [0, cell_w, cell_w*2]:
-                        if dr == cell_h and dc == cell_w:
-                            continue
-                        cand_r = r + dr
-                        cand_c = c + dc
-                        if can_place(best_res_id, cand_r, cand_c):
-                            place(best_res_id, cand_r, cand_c)
+        for r in range(0, H, res_h):
+            for c in range(0, W, res_w):
+                if place(best_res_id, r, c):
 
-        # --- Fill free spaces with extra utilities ---
-        step_r_fill = max(1, cell_h//2)
-        step_c_fill = max(1, cell_w//2)
-        search_radius = city.D + max(cell_h, cell_w)
-        for r in range(0, H, step_r_fill):
-            for c in range(0, W, step_c_fill):
-                if occupied[r][c]:
-                    continue
-                for u_id in best_utilities:
-                    if can_place(u_id, r, c):
-                        # Only place if there is nearby residential
-                        has_nearby_res = any(
-                            city.get_project(b).build_type=="R" and abs(b_r-r)+abs(b_c-c)<=search_radius
-                            for b,b_r,b_c in placements
-                        )
-                        if has_nearby_res:
-                            place(u_id, r, c)
-                            break
+                    for u_id in best_utils:
+                        placed = False
+                        for dr in range(-D, D + 1):
+                            for dc in range(-D, D + 1):
+                                ur, uc = r + dr, c + dc
+                                if place(u_id, ur, uc):
+                                    placed = True
+                                    break
+                            if placed:
+                                break
 
-        current_score = city.get_score(placements)
+        current_score = city.get_score(to_city_format())
         best_score = current_score
+
+        print(f"Initial State -> Score: {current_score}, buildings: {len(placements)}")
+
+        # Hill Climbing
+        print("Hill Climbing...")
         iterations_without_improvement = 0
-        print(f"-> Initial explosion complete! Score: {current_score}, buildings placed: {len(placements)}")
 
-        # Phase 2: Hill Climbing fine-tuning optimization
-        print("-> Starting Hill Climbing optimization...")
-        for i in range(max_iterations):
-            if i % 50 == 0:
-                print(f"Iteration {i}, current score: {current_score}, best score: {best_score}")
+        for iteration in range(max_iterations):
 
-            # Operations focused on local improvements
-            op = random.choices(["MOVE","CHANGE_TYPE","REMOVE","ADD"], weights=[0.35,0.35,0.15,0.15])[0]
+            op = random.choices(
+                ["MOVE", "CHANGE", "ADD", "REMOVE"],
+                weights=[0.4, 0.3, 0.2, 0.1]
+            )[0]
+
             improved = False
+            if iteration % 500 == 0:
+                print(f"Iteration {iteration}, current_score: {current_score}")
 
-            if op=="ADD":
-                b = random.randint(0, city.B-1)
-                if placements:
-                    _, ext_r, ext_c = random.choice(placements)
-                    r = max(0, min(H-1, ext_r + random.randint(-4,4)))
-                    c = max(0, min(W-1, ext_c + random.randint(-4,4)))
-                else:
-                    r, c = random.randint(0,H-1), random.randint(0,W-1)
-                if can_place(b,r,c):
-                    place(b,r,c)
-                    new_score = city.get_score(placements)
-                    if new_score>=current_score:
+            if op == "ADD":
+                b = random.randint(0, city.B - 1)
+                r = random.randint(0, H - 1)
+                c = random.randint(0, W - 1)
+
+                if place(b, r, c):
+                    new_score = city.get_score(to_city_format())
+                    if new_score >= current_score:
                         current_score = new_score
-                        improved=True
+                        improved = True
                     else:
-                        remove(len(placements)-1)
+                        remove(len(placements) - 1)
 
-            elif op=="REMOVE" and placements:
-                idx = random.randint(0,len(placements)-1)
-                b,r,c = placements[idx]
-                remove(idx)
-                new_score = city.get_score(placements)
-                if new_score>=current_score:
-                    current_score = new_score
-                    improved=True
-                else:
-                    place(b,r,c)
+            elif placements:
 
-            elif op=="MOVE" and placements:
-                idx = random.randint(0,len(placements)-1)
-                b, old_r, old_c = placements[idx]
-                remove(idx)
-                new_r = max(0, min(H-1, old_r+random.randint(-3,3)))
-                new_c = max(0, min(W-1, old_c+random.randint(-3,3)))
-                if can_place(b,new_r,new_c):
-                    place(b,new_r,new_c)
-                    new_score = city.get_score(placements)
-                    if new_score>=current_score:
+                idx = random.randint(0, len(placements) - 1)
+                old = remove(idx)
+
+                if op == "MOVE":
+                    new_r = max(0, min(H - 1, old[1] + random.randint(-3, 3)))
+                    new_c = max(0, min(W - 1, old[2] + random.randint(-3, 3)))
+
+                    if place(old[0], new_r, new_c):
+                        new_score = city.get_score(to_city_format())
+                        if new_score >= current_score:
+                            current_score = new_score
+                            improved = True
+                        else:
+                            remove(len(placements) - 1)
+                            place(old[0], old[1], old[2])
+                    else:
+                        place(old[0], old[1], old[2])
+
+                elif op == "CHANGE":
+                    new_b = random.randint(0, city.B - 1)
+
+                    if place(new_b, old[1], old[2]):
+                        new_score = city.get_score(to_city_format())
+                        if new_score >= current_score:
+                            current_score = new_score
+                            improved = True
+                        else:
+                            remove(len(placements) - 1)
+                            place(old[0], old[1], old[2])
+                    else:
+                        place(old[0], old[1], old[2])
+
+                elif op == "REMOVE":
+                    new_score = city.get_score(to_city_format())
+                    if new_score >= current_score:
                         current_score = new_score
-                        improved=True
+                        improved = True
                     else:
-                        remove(len(placements)-1)
-                        place(b, old_r, old_c)
-                else:
-                    place(b, old_r, old_c)
-
-            elif op=="CHANGE_TYPE" and placements:
-                idx = random.randint(0,len(placements)-1)
-                old_b,r,c = placements[idx]
-                remove(idx)
-                new_b = random.randint(0,city.B-1)
-                if new_b!=old_b and can_place(new_b,r,c):
-                    place(new_b,r,c)
-                    new_score = city.get_score(placements)
-                    if new_score>=current_score:
-                        current_score=new_score
-                        improved=True
-                    else:
-                        remove(len(placements)-1)
-                        place(old_b,r,c)
-                else:
-                    place(old_b,r,c)
+                        place(old[0], old[1], old[2])
 
             if improved:
-                if current_score>best_score+min_delta:
-                    best_score=current_score
-                    iterations_without_improvement=0
+                if current_score > best_score + min_delta:
+                    best_score = current_score
+                    iterations_without_improvement = 0
                 else:
-                    iterations_without_improvement+=1
+                    iterations_without_improvement += 1
             else:
-                iterations_without_improvement+=1
+                iterations_without_improvement += 1
 
-            if iterations_without_improvement>=patience:
-                print(f"  No improvement for {patience} iterations, stopping run.")
+            if iterations_without_improvement >= patience:
                 break
 
-        return placements, best_score
+        return to_city_format(), best_score
 
-    # Execution with optional restart
-    if not use_restart:
-        placements, _ = run_single_hc()
-        return placements
+    best_solution = []
+    best_score = -1
 
-    global_best_score=-1
-    global_best_solution=[]
-    restart=0
-    while restart<max_restarts:
-        print(f"--- Restart {restart+1} ---")
-        placements, score = run_single_hc()
-        if score>global_best_score:
-            global_best_score = score
-            global_best_solution = placements
-        restart +=1
+    for r in range(max_restarts if use_restart else 1):
+        if use_restart:
+            print(f"\n--- Restart {r+1} ---")
 
-    print(f"Best score found: {global_best_score}")
-    return global_best_solution
+        sol, score = run_single_hc()
+
+        print(f"\nRestart {r+1} finished. Score: {score}, buildings placed: {len(sol)}")
+
+        if score > best_score:
+            best_solution = sol
+            best_score = score
+
+    return best_solution
