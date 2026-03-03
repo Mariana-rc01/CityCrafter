@@ -1,5 +1,7 @@
-from buildings import *
 import importlib
+
+from buildings import *
+from algorithms.hill_climbling import *
 
 class City:
     """Holds one problem instance: grid size, walking distance, and building projects."""
