@@ -118,9 +118,6 @@ def hill_climbing_boosted(city, max_iterations=10000, patience=500, min_delta=2,
         # Hill Climbing
         iterations_without_improvement = 0
         for i in range(max_iterations):
-            if i % 1000 == 0:
-                print(f"  Iteração {i} | Score Atual: {current_score} | Melhor: {best_score}")
-
             op = random.choices(["MOVE", "CHANGE", "ADD", "REMOVE"], weights=[0.4, 0.3, 0.2, 0.1])[0]
             improved = False
 

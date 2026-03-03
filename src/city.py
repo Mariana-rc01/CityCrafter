@@ -1,6 +1,5 @@
-from concurrent.futures import ProcessPoolExecutor
-from functools import partial
 import importlib
+import numpy as np
 
 from buildings import *
 from algorithms.hill_climbing import *
@@ -99,29 +98,6 @@ class City:
 
         return solution, self.get_score(solution)
 
-    def get_score_fast(self, solution):
-        placements = self._extract_placements(solution)
-        res = [p for p in placements if self.get_project(p["project_id"]).build_type == "R"]
-        util = [p for p in placements if self.get_project(p["project_id"]).build_type == "U"]
-
-        for p in placements:
-            p["hash_cells"] = self.get_project(p["project_id"]).absolute_hash_cells(p["top_left"])
-
-        total = 0
-        for r_p in res:
-            capacity = self.get_project(r_p["project_id"]).capacity
-            services_found = set()
-            for u_p in util:
-                u_type = self.get_project(u_p["project_id"]).service_type
-                if u_type in services_found: continue
-
-                # Optimization: check bounding boxes first (fast) before checking all cell pairs (slow)
-                if self._min_manhattan_optimized(r_p["hash_cells"], u_p["hash_cells"]) <= self.D:
-                    services_found.add(u_type)
-            total += capacity * len(services_found)
-        return total
-
-
     def get_score(self, solution):
         """Computes the official score:
         For each residential building with capacity r, earn r points for each DISTINCT
@@ -133,20 +109,38 @@ class City:
         res = [p for p in placements if self.get_project(p["project_id"]).build_type == "R"]
         util = [p for p in placements if self.get_project(p["project_id"]).build_type == "U"]
 
-        # Pre-computar hash_cells
-        for p in placements:
-            proj = self.get_project(p["project_id"])
-            if "hash_cells" not in p:
-                p["hash_cells"] = proj.absolute_hash_cells(p["top_left"])
+        H, W, D = self.H, self.W, self.D
 
-        # Partial function to send to parallel execution (one per residencial)
-        partial_score = partial(_score_for_res, util_list=util, D=self.D, city=self)
+        service_types = set(self.get_project(u["project_id"]).service_type for u in util)
+        dist_grids = {}
+        for stype in service_types:
+            grid = np.full((H, W), np.inf)
+            for u in util:
+                u_proj = self.get_project(u["project_id"])
+                if u_proj.service_type != stype:
+                    continue
+                cells = u_proj.absolute_hash_cells(u["top_left"])
+                for c in cells:
+                    grid[c.r, c.c] = 0
+            for d in range(1, D+1):
+                mask = (grid == d-1)
+                grid[1:, :] = np.minimum(grid[1:, :], mask[:-1, :] + 1)
+                grid[:-1, :] = np.minimum(grid[:-1, :], mask[1:, :] + 1)
+                grid[:, 1:] = np.minimum(grid[:, 1:], mask[:, :-1] + 1)
+                grid[:, :-1] = np.minimum(grid[:, :-1], mask[:, 1:] + 1)
+            dist_grids[stype] = grid
 
-        # Parallelize scoring of residential buildings across CPU cores
-        with ProcessPoolExecutor() as executor:
-            scores = list(executor.map(partial_score, res))
+        total = 0
+        for r in res:
+            r_proj = self.get_project(r["project_id"])
+            capacity = r_proj.capacity
+            cells = r_proj.absolute_hash_cells(r["top_left"])
+            reachable = 0
+            for stype, grid in dist_grids.items():
+                if any(grid[c.r, c.c] <= D for c in cells):
+                    reachable += 1
+            total += capacity * reachable
 
-        total = sum(scores)
         return total
 
     def get_score_original(self, solution):
@@ -269,29 +263,3 @@ class City:
                         return 0
         return best
 
-    def _min_manhattan_optimized(self, cells_a, cells_b):
-        """Optimized version of min Manhattan distance with early pruning."""
-        min_d = 10**9
-        # Always iterate the smaller set first to minimize number of iterations (early pruning)
-        if len(cells_a) > len(cells_b): cells_a, cells_b = cells_b, cells_a
-        for a in cells_a:
-            for b in cells_b:
-                d = abs(a.r - b.r) + abs(a.c - b.c)
-                if d < min_d:
-                    min_d = d
-                if min_d <= self.D:
-                    return min_d
-        return min_d
-
-def _score_for_res(r_p, util_list, D, city):
-    capacity = city.get_project(r_p["project_id"]).capacity
-    services_found = set()
-
-    for u_p in util_list:
-        u_type = city.get_project(u_p["project_id"]).service_type
-        if u_type in services_found:
-            continue
-        if city._min_manhattan_optimized(r_p["hash_cells"], u_p["hash_cells"]) <= D:
-            services_found.add(u_type)
-
-    return capacity * len(services_found)
