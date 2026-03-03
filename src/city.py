@@ -1,3 +1,5 @@
+from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 import importlib
 
 from buildings import *
@@ -97,7 +99,7 @@ class City:
 
         return solution, self.get_score(solution)
 
-    def get_score(self, solution):
+    def get_score_fast(self, solution):
         placements = self._extract_placements(solution)
         res = [p for p in placements if self.get_project(p["project_id"]).build_type == "R"]
         util = [p for p in placements if self.get_project(p["project_id"]).build_type == "U"]
@@ -117,6 +119,34 @@ class City:
                 if self._min_manhattan_optimized(r_p["hash_cells"], u_p["hash_cells"]) <= self.D:
                     services_found.add(u_type)
             total += capacity * len(services_found)
+        return total
+
+
+    def get_score(self, solution):
+        """Computes the official score:
+        For each residential building with capacity r, earn r points for each DISTINCT
+        utility service type reachable within distance <= D (shortest Manhattan distance
+        between any '#' cells).
+        """
+        placements = self._extract_placements(solution)
+
+        res = [p for p in placements if self.get_project(p["project_id"]).build_type == "R"]
+        util = [p for p in placements if self.get_project(p["project_id"]).build_type == "U"]
+
+        # Pre-computar hash_cells
+        for p in placements:
+            proj = self.get_project(p["project_id"])
+            if "hash_cells" not in p:
+                p["hash_cells"] = proj.absolute_hash_cells(p["top_left"])
+
+        # Partial function to send to parallel execution (one per residencial)
+        partial_score = partial(_score_for_res, util_list=util, D=self.D, city=self)
+
+        # Parallelize scoring of residential buildings across CPU cores
+        with ProcessPoolExecutor() as executor:
+            scores = list(executor.map(partial_score, res))
+
+        total = sum(scores)
         return total
 
     def get_score_original(self, solution):
@@ -252,3 +282,16 @@ class City:
                 if min_d <= self.D:
                     return min_d
         return min_d
+
+def _score_for_res(r_p, util_list, D, city):
+    capacity = city.get_project(r_p["project_id"]).capacity
+    services_found = set()
+
+    for u_p in util_list:
+        u_type = city.get_project(u_p["project_id"]).service_type
+        if u_type in services_found:
+            continue
+        if city._min_manhattan_optimized(r_p["hash_cells"], u_p["hash_cells"]) <= D:
+            services_found.add(u_type)
+
+    return capacity * len(services_found)
