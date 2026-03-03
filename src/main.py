@@ -1,7 +1,6 @@
 import sys
 
 from read_file import parse_input_file
-from algorithms.hill_climbling import hill_climbing
 from utils.visualization import visualize_city
 
 def main():
@@ -13,12 +12,11 @@ def main():
 
     city = parse_input_file(input_file)
 
-    solution = hill_climbing(city, use_restart=True)
+    solution, score = city.make_city("hill climbing boosted")
 
-    score = city.get_score(solution)
     print(f"Final Score: {score}")
 
-    visualize_city(city, solution)
+    #visualize_city(city, solution)
 
 if __name__ == "__main__":
     main()

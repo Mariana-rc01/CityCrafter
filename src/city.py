@@ -1,7 +1,8 @@
 import importlib
 
 from buildings import *
-from algorithms.hill_climbling import *
+from algorithms.hill_climbing import *
+from algorithms.hill_climbing_boosted import *
 
 class City:
     """Holds one problem instance: grid size, walking distance, and building projects."""
@@ -58,6 +59,9 @@ class City:
         mapping = {
             "hill climbing": ("algorithms.hill_climbing", "hill_climbing"),
             "hc": ("algorithms.hill_climbing", "hill_climbing"),
+
+            "hill climbing boosted": ("algorithms.hill_climbing_boosted", "hill_climbing_boosted"),
+            "hc boosted": ("algorithms.hill_climbing_boosted", "hill_climbing_boosted"),
 
             "simulated annealing": ("algorithms.simulated_annealing", "simulated_annealing"),
             "sa": ("algorithms.simulated_annealing", "simulated_annealing"),
