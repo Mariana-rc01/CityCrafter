@@ -6,7 +6,7 @@ def hill_climbing(city,
                   patience=500,
                   min_delta=2,
                   use_restart=False,
-                  max_restarts=3):
+                  max_restarts=1):
 
     def run_single_hc():
 

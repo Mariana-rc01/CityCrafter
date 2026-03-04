@@ -1,7 +1,7 @@
 import random
 from coordinates import Coordinates
 
-def hill_climbing_boosted(city, max_iterations=10000, patience=500, min_delta=2, use_restart=True, max_restarts=2):
+def hill_climbing_boosted(city, max_iterations=10000, patience=500, min_delta=2, use_restart=True, max_restarts=1):
 
     def run_single_hc():
         H, W, D = city.H, city.W, city.D
@@ -118,6 +118,8 @@ def hill_climbing_boosted(city, max_iterations=10000, patience=500, min_delta=2,
         # Hill Climbing
         iterations_without_improvement = 0
         for i in range(max_iterations):
+            if i % 500 == 0:
+                print(f"  Iteration {i}, current score: {current_score}, best score: {best_score}")
             op = random.choices(["MOVE", "CHANGE", "ADD", "REMOVE"], weights=[0.4, 0.3, 0.2, 0.1])[0]
             improved = False
 
