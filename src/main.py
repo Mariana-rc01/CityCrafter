@@ -7,7 +7,7 @@ def choose_algorithm():
     algorithms = [
         ("greedy", "Greedy"),
         ("hill climbing", "Hill Climbing"),
-        ("hill climbing boosted", "Hill Climbing Boosted")
+        ("tabu search", "Tabu Search")
     ]
 
     print("\n=== Choose Algorithm (or 'q' to quit) ===")
@@ -25,8 +25,7 @@ def choose_algorithm():
                 print(f"Selected algorithm: {algorithms[idx - 1][1]}\n")
                 return algo_key
         print("Invalid option. Please enter a valid number or 'q'.")
-        
-        
+
 def choose_dataset():
     datasets = {
         "a": "data/a_example.in",
@@ -59,12 +58,12 @@ def interactive_menu():
 
         algorithm = choose_algorithm()
         if algorithm == "q":
-            print("\nExiting program.")
+            print("\nExiting program. Goodbye 👋")
             break
 
         dataset_path = choose_dataset()
         if dataset_path == "q":
-            print("\nExiting program.")
+            print("\nExiting program. Goodbye 👋")
             break
 
         print("\n--- Running algorithm ---")
@@ -84,8 +83,8 @@ def interactive_menu():
         if exit_choice == "q":
             print("\nExiting program. Goodbye 👋")
             break
-        
-        
+
+
 def main():
     if len(sys.argv) != 1:
         print("Usage: python3 src/main.py")

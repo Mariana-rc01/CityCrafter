@@ -3,7 +3,6 @@ import numpy as np
 
 from buildings import *
 from algorithms.hill_climbing import *
-from algorithms.hill_climbing_boosted import *
 from algorithms.greedy import *
 
 class City:
@@ -61,9 +60,6 @@ class City:
         mapping = {
             "hill climbing": ("algorithms.hill_climbing", "hill_climbing"),
             "hc": ("algorithms.hill_climbing", "hill_climbing"),
-
-            "hill climbing boosted": ("algorithms.hill_climbing_boosted", "hill_climbing_boosted"),
-            "hc boosted": ("algorithms.hill_climbing_boosted", "hill_climbing_boosted"),
 
             "simulated annealing": ("algorithms.simulated_annealing", "simulated_annealing"),
             "sa": ("algorithms.simulated_annealing", "simulated_annealing"),
