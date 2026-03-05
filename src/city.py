@@ -4,6 +4,7 @@ import numpy as np
 from buildings import *
 from algorithms.hill_climbing import *
 from algorithms.hill_climbing_boosted import *
+from algorithms.greedy import *
 
 class City:
     """Holds one problem instance: grid size, walking distance, and building projects."""

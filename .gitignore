@@ -42,3 +42,4 @@ dist/
 .TemporaryItems
 .VolumeIcon.icns
 .com.apple.timemachine.donotpresent
+__init__.py
