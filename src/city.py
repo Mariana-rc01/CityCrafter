@@ -96,97 +96,45 @@ class City:
         return solution, self.get_score(solution)
 
     def get_score(self, solution):
-        """Computes the official score:
-        For each residential building with capacity r, earn r points for each DISTINCT
-        utility service type reachable within distance <= D (shortest Manhattan distance
-        between any '#' cells).
-        """
         placements = self._extract_placements(solution)
-
-        res = [p for p in placements if self.get_project(p["project_id"]).build_type == "R"]
-        util = [p for p in placements if self.get_project(p["project_id"]).build_type == "U"]
 
         H, W, D = self.H, self.W, self.D
 
-        service_types = set(self.get_project(u["project_id"]).service_type for u in util)
-        dist_grids = {}
-        for stype in service_types:
-            grid = np.full((H, W), np.inf)
-            for u in util:
-                u_proj = self.get_project(u["project_id"])
-                if u_proj.service_type != stype:
-                    continue
-                cells = u_proj.absolute_hash_cells(u["top_left"])
+        influence_grid = [[set() for _ in range(W)] for _ in range(H)]
+
+        for p in placements:
+            proj = self.get_project(p["project_id"])
+            if proj.build_type == "U":
+                s_type = proj.service_type
+                cells = proj.absolute_hash_cells(p["top_left"])
+                affected = set()
+
                 for c in cells:
-                    grid[c.r, c.c] = 0
-            for d in range(1, D+1):
-                mask = (grid == d-1)
-                grid[1:, :] = np.minimum(grid[1:, :], mask[:-1, :] + 1)
-                grid[:-1, :] = np.minimum(grid[:-1, :], mask[1:, :] + 1)
-                grid[:, 1:] = np.minimum(grid[:, 1:], mask[:, :-1] + 1)
-                grid[:, :-1] = np.minimum(grid[:, :-1], mask[:, 1:] + 1)
-            dist_grids[stype] = grid
+                    for dr in range(-D, D + 1):
+                        rem = D - abs(dr)
+                        for dc in range(-rem, rem + 1):
+                            nr, nc = c.r + dr, c.c + dc
+                            if 0 <= nr < H and 0 <= nc < W:
+                                affected.add((nr, nc))
+
+                for nr, nc in affected:
+                    influence_grid[nr][nc].add(s_type)
 
         total = 0
-        for r in res:
-            r_proj = self.get_project(r["project_id"])
-            capacity = r_proj.capacity
-            cells = r_proj.absolute_hash_cells(r["top_left"])
-            reachable = 0
-            for stype, grid in dist_grids.items():
-                if any(grid[c.r, c.c] <= D for c in cells):
-                    reachable += 1
-            total += capacity * reachable
-
-        return total
-
-    def get_score_original(self, solution):
-        """
-        Computes the official score:
-        For each residential building with capacity r, earn r points for each DISTINCT
-        utility service type reachable within distance <= D (shortest Manhattan distance
-        between any '#' cells).
-        """
-        placements = self._extract_placements(solution)
-
-        # Separate residential and utility placements
-        res = []
-        util = []
         for p in placements:
             proj = self.get_project(p["project_id"])
             if proj.build_type == "R":
-                res.append(p)
-            else:
-                util.append(p)
+                capacity = proj.capacity
+                cells = proj.absolute_hash_cells(p["top_left"])
 
-        # Precompute absolute '#' cells per placement (simple and clear)
-        for p in placements:
-            proj = self.get_project(p["project_id"])
-            p["hash_cells"] = proj.absolute_hash_cells(p["top_left"])
+                reachable_services = set()
+                for c in cells:
+                    reachable_services.update(influence_grid[c.r][c.c])
 
-        total = 0
-        D = self.D
-
-        for r_place in res:
-            r_proj = self.get_project(r_place["project_id"])
-            capacity = r_proj.capacity
-            reachable_services = set()
-
-            for u_place in util:
-                u_proj = self.get_project(u_place["project_id"])
-                stype = u_proj.service_type
-
-                # Skip if this service type already counted for this residential
-                if stype in reachable_services:
-                    continue
-
-                d = self._min_manhattan_between_hash_sets(r_place["hash_cells"], u_place["hash_cells"])
-                if d <= D:
-                    reachable_services.add(stype)
-
-            total += capacity * len(reachable_services)
+                total += capacity * len(reachable_services)
 
         return total
+
 
     # Internal helpers
     def _extract_placements(self, solution):
