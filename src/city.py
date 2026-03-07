@@ -68,11 +68,12 @@ class City:
             "tabu": ("algorithms.tabu_search", "tabu_search"),
 
             "genetic algorithm": ("algorithms.genetic_algorithm", "genetic_algorithm"),
-            "genetic algorithms": ("algorithms.genetic_algorithm", "genetic_algorithm"),
+            "genetic": ("algorithms.genetic", "genetic_algorithm"),
             "ga": ("algorithms.genetic_algorithm", "genetic_algorithm"),
 
             # Optional baseline
             "greedy": ("algorithms.greedy", "greedy"),
+            "greedy_dc": ("algorithms.greedy_dc", "greedy_dc"),
         }
 
         if name not in mapping:

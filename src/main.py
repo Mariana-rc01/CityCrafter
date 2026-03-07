@@ -6,8 +6,10 @@ from utils.visualization import visualize_city
 def choose_algorithm():
     algorithms = [
         ("greedy", "Greedy"),
+        ("greedy_dc", "Greedy DC"),
         ("hill climbing", "Hill Climbing"),
-        ("tabu search", "Tabu Search")
+        ("tabu search", "Tabu Search"),
+        ("genetic", "Genetic")
     ]
 
     print("\n=== Choose Algorithm (or 'q' to quit) ===")
