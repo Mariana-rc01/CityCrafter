@@ -1,3 +1,4 @@
+import os
 from city import *
 
 def parse_input_file(path, validate_plans = True):
@@ -10,6 +11,10 @@ def parse_input_file(path, validate_plans = True):
       line: tp hp wp x   (x = capacity if tp='R', service_type if tp='U')
       hp lines: plan rows with '#' or '.'
     """
+
+    # Extract dataset name from file path
+    dataset_name = os.path.splitext(os.path.basename(path))[0]
+
     with open(path, "r", encoding="utf-8") as f:
         # Read first non-empty line
         first = ""
@@ -60,4 +65,4 @@ def parse_input_file(path, validate_plans = True):
 
             projects.append(proj)
 
-        return City(H=H, W=W, D=D, B=B, projects=projects)
+        return City(H=H, W=W, D=D, B=B, projects=projects, dataset_name=dataset_name)

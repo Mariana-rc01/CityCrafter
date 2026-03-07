@@ -1,18 +1,20 @@
 import importlib
-import numpy as np
+import time, tracemalloc, inspect
 
 from buildings import *
 from algorithms.hill_climbing import *
 from algorithms.greedy import *
+from utils.metrics import save_metrics_to_csv
 
 class City:
     """Holds one problem instance: grid size, walking distance, and building projects."""
-    def __init__(self, H, W, D, B, projects):
+    def __init__(self, H, W, D, B, projects, dataset_name="Unknown"):
         self.H = H
         self.W = W
         self.D = D
         self.B = B
         self.projects = projects
+        self.dataset_name = dataset_name
 
         if self.B != len(self.projects):
             raise ValueError("B does not match number of parsed projects")
@@ -91,10 +93,39 @@ class City:
 
         func = getattr(module, func_name)
 
-        # Convention: algorithm(city, *args, **kwargs) -> solution
+        # 1. Ready to extract parameters and their values (including defaults)
+        sig = inspect.signature(func)
+        bound_args = sig.bind(self, *args, **kwargs)
+
+        # 2. Fill in default values for any parameters not explicitly passed
+        bound_args.apply_defaults()
+
+        # 3. Convert bound arguments to a simple dict for easier formatting
+        params_dict = dict(bound_args.arguments)
+
+        # 4. Removes 'city' from the parameters dict, as they are not hyperparameters we want to log
+        params_dict.pop('city', None)
+
+        # 5. Format parameters into a string for CSV logging (e.g., "param1=value1, param2=value2")
+        params_str = ", ".join([f"{k}={v}" for k, v in params_dict.items()])
+
+        # 6. Run the algorithm while measuring execution time and peak memory usage
+        tracemalloc.start()
+        start_time = time.perf_counter()
+
         solution = func(self, *args, **kwargs)
 
-        return solution, self.get_score(solution)
+        end_time = time.perf_counter()
+        _, peak_mem = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+
+        execution_time = end_time - start_time
+        peak_mem_mb = peak_mem / (1024 * 1024)
+        score = self.get_score(solution)
+
+        save_metrics_to_csv(self, func_name, execution_time, peak_mem_mb, score, params_str)
+
+        return solution, score
 
     def get_score(self, solution):
         placements = self._extract_placements(solution)

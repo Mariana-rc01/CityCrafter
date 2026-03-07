@@ -1,0 +1,2 @@
+Dataset,Algorithm,Grid Size,Score,Time (s),Peak Memory (MB),Parameters
+a_example,tabu_search,4x7,125,3.0010,0.0816,"max_iterations=2500, tabu_tenure=50, neighborhood_size=30, max_runtime_s=540"
