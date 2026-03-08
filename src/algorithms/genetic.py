@@ -1,8 +1,7 @@
 import random
 import time
 from coordinates import Coordinates
-from algorithms.greedy2 import greedy2
-
+from algorithms.greedy import greedy
 
 def genetic_algorithm(
     city,
@@ -35,11 +34,9 @@ def genetic_algorithm(
     )
     top_res_projects = residential_sorted[:top_k_res]
 
-    # top 3 menores por tipo de utility
     utility_candidates_by_type = {}
     for u in utilities:
-        st = u.service_type
-        utility_candidates_by_type.setdefault(st, []).append(u)
+        utility_candidates_by_type.setdefault(u.service_type, []).append(u)
 
     for st in utility_candidates_by_type:
         utility_candidates_by_type[st].sort(
@@ -49,20 +46,13 @@ def genetic_algorithm(
 
     utility_types = sorted(utility_candidates_by_type.keys())
 
-    print("========== GENETIC ALGORITHM ==========")
+    print("========== MEMETIC ALGORITHM (GA + Local Search) ==========")
     print(f"Grid: {H} x {W} | D={D} | Projects={city.B}")
-    print(f"Population size: {population_size}")
-    print(f"Generations: {generations}")
-    print(f"Elite size: {elite_size}")
-    print(f"Selected residential candidates: {len(top_res_projects)} (top_k_res={top_k_res})")
-    print(f"Selected utility types (max): {len(utility_types)}")
+    print(f"Population size: {population_size} | Generations: {generations}")
     print("Start evolving...")
 
     cell_cache = {}
 
-    # =========================================================
-    # Basic geometric helpers
-    # =========================================================
     def get_cells(b, r, c):
         key = (b, r, c)
         if key not in cell_cache:
@@ -90,35 +80,40 @@ def genetic_algorithm(
     def random_window():
         h_span = max(10, min(H // 4, max(20, H // 8)))
         w_span = max(10, min(W // 4, max(20, W // 8)))
-
-        if H <= h_span:
-            r0, r1 = 0, H - 1
-        else:
-            r0 = random.randint(0, H - h_span)
-            r1 = min(H - 1, r0 + random.randint(max(5, h_span // 2), h_span))
-
-        if W <= w_span:
-            c0, c1 = 0, W - 1
-        else:
-            c0 = random.randint(0, W - w_span)
-            c1 = min(W - 1, c0 + random.randint(max(5, w_span // 2), w_span))
-
+        r0 = random.randint(0, max(0, H - h_span))
+        r1 = min(H - 1, r0 + random.randint(max(5, h_span // 2), h_span))
+        c0 = random.randint(0, max(0, W - w_span))
+        c1 = min(W - 1, c0 + random.randint(max(5, w_span // 2), w_span))
         return r0, c0, r1, c1
 
     # =========================================================
-    # Individual representation
+    # 1. SPARSE GRIDS & FAST CLONING (Otimização Crítica)
     # =========================================================
     def make_empty_individual():
         return {
-            "occupied": [[False] * W for _ in range(H)],
-            "influence_grid": [[{} for _ in range(W)] for _ in range(H)],
-            "residential_at": [[None] * W for _ in range(H)],
-            "placements": {},      # uid -> [b_id, r, c, b_type, val, cells]
-            "res_coverage": {},    # uid -> {service_type: count}
+            "occupied": set(),         # Agora é um Set (Sparse)
+            "influence_grid": {},      # Agora é um Dict (Sparse)
+            "residential_at": {},      # Agora é um Dict (Sparse)
+            "placements": {},      
+            "res_coverage": {},    
             "active_uids": [],
             "uid_to_idx": {},
             "next_uid": 0,
             "score": 0,
+        }
+
+    def clone_individual(ind):
+        # CÓPIA NATIVA INSTANTÂNEA em vez de reconstruir bloco a bloco!
+        return {
+            "occupied": ind["occupied"].copy(),
+            "influence_grid": {k: v.copy() for k, v in ind["influence_grid"].items()},
+            "residential_at": ind["residential_at"].copy(),
+            "placements": {k: v[:] for k, v in ind["placements"].items()},
+            "res_coverage": {k: v.copy() for k, v in ind["res_coverage"].items()},
+            "active_uids": ind["active_uids"][:],
+            "uid_to_idx": ind["uid_to_idx"].copy(),
+            "next_uid": ind["next_uid"],
+            "score": ind["score"],
         }
 
     def add_active_uid(ind, uid):
@@ -135,27 +130,22 @@ def genetic_algorithm(
     def can_place(ind, proj, r, c):
         if r < 0 or r + proj.h > H or c < 0 or c + proj.w > W:
             return False
-
         cells = get_cells(proj.project_id, r, c)
         for cell in cells:
-            if ind["occupied"][cell.r][cell.c]:
+            if (cell.r, cell.c) in ind["occupied"]:
                 return False
         return cells
 
-    # =========================================================
-    # Incremental scoring primitives
-    # =========================================================
     def place_residential(ind, uid, capacity, cells):
         gain = 0
         cov = {}
 
         for cell in cells:
-            ind["occupied"][cell.r][cell.c] = True
-            ind["residential_at"][cell.r][cell.c] = uid
-
-            for s, count in ind["influence_grid"][cell.r][cell.c].items():
-                cov[s] = cov.get(s, 0) + count
-
+            ind["occupied"].add((cell.r, cell.c))
+            ind["residential_at"][(cell.r, cell.c)] = uid
+            if (cell.r, cell.c) in ind["influence_grid"]:
+                for s, count in ind["influence_grid"][(cell.r, cell.c)].items():
+                    cov[s] = cov.get(s, 0) + count
         for _, count in cov.items():
             if count > 0:
                 gain += capacity
@@ -172,127 +162,82 @@ def genetic_algorithm(
                 loss += capacity
 
         for cell in cells:
-            ind["occupied"][cell.r][cell.c] = False
-            ind["residential_at"][cell.r][cell.c] = None
-
+            ind["occupied"].remove((cell.r, cell.c))
+            del ind["residential_at"][(cell.r, cell.c)]
         ind["score"] -= loss
 
     def place_utility(ind, uid, service_type, cells):
-        for cell in cells:
-            ind["occupied"][cell.r][cell.c] = True
-
-        affected = set()
         gain = 0
-
+        affected = set()
         for cell in cells:
+            ind["occupied"].add((cell.r, cell.c))
             for nr, nc in get_influence_diamond(cell.r, cell.c, D):
                 affected.add((nr, nc))
-
         for nr, nc in affected:
-            grid_cell = ind["influence_grid"][nr][nc]
-            prev = grid_cell.get(service_type, 0)
-            grid_cell[service_type] = prev + 1
-
-            res_uid = ind["residential_at"][nr][nc]
+            grid_cell = ind["influence_grid"].setdefault((nr, nc), {})
+            grid_cell[service_type] = grid_cell.get(service_type, 0) + 1
+            res_uid = ind["residential_at"].get((nr, nc))
             if res_uid is not None:
                 cov = ind["res_coverage"][res_uid]
-                prev_cov = cov.get(service_type, 0)
-                cov[service_type] = prev_cov + 1
-                if prev_cov == 0:
-                    capacity = ind["placements"][res_uid][4]
-                    gain += capacity
-
+                cov[service_type] = cov.get(service_type, 0) + 1
+                if cov[service_type] == 1:
+                    gain += ind["placements"][res_uid][4]
         ind["score"] += gain
 
     def remove_utility(ind, uid, service_type, cells):
-        affected = set()
         loss = 0
-
+        affected = set()
         for cell in cells:
+            ind["occupied"].remove((cell.r, cell.c))
             for nr, nc in get_influence_diamond(cell.r, cell.c, D):
                 affected.add((nr, nc))
-
         for nr, nc in affected:
-            grid_cell = ind["influence_grid"][nr][nc]
-            prev = grid_cell.get(service_type, 0)
-            if prev <= 1:
-                grid_cell.pop(service_type, None)
-            else:
-                grid_cell[service_type] = prev - 1
-
-            res_uid = ind["residential_at"][nr][nc]
+            grid_cell = ind["influence_grid"][(nr, nc)]
+            grid_cell[service_type] -= 1
+            if grid_cell[service_type] == 0:
+                del grid_cell[service_type]
+                if not grid_cell:
+                    del ind["influence_grid"][(nr, nc)]
+            res_uid = ind["residential_at"].get((nr, nc))
             if res_uid is not None:
                 cov = ind["res_coverage"][res_uid]
-                prev_cov = cov.get(service_type, 0)
-
-                if prev_cov <= 1:
-                    if service_type in cov:
-                        cov.pop(service_type)
-                    if prev_cov > 0:
-                        capacity = ind["placements"][res_uid][4]
-                        loss += capacity
-                else:
-                    cov[service_type] = prev_cov - 1
-
-        for cell in cells:
-            ind["occupied"][cell.r][cell.c] = False
-
+                cov[service_type] -= 1
+                if cov[service_type] == 0:
+                    loss += ind["placements"][res_uid][4]
         ind["score"] -= loss
 
     def add_new(ind, b_id, r, c):
         proj = city.get_project(b_id)
         cells = can_place(ind, proj, r, c)
-        if cells is False:
-            return False
-
+        if cells is False: return False
         uid = ind["next_uid"]
         ind["next_uid"] += 1
-
         val = proj.capacity if proj.build_type == "R" else proj.service_type
+        if proj.build_type == "R": place_residential(ind, uid, val, cells)
+        else: place_utility(ind, uid, val, cells)
         ind["placements"][uid] = [b_id, r, c, proj.build_type, val, cells]
         add_active_uid(ind, uid)
-
-        if proj.build_type == "R":
-            place_residential(ind, uid, proj.capacity, cells)
-        else:
-            place_utility(ind, uid, proj.service_type, cells)
-
         return uid
 
     def remove_uid(ind, uid):
-        if uid not in ind["placements"]:
-            return None
-
+        if uid not in ind["placements"]: return None
         b_id, r, c, b_type, val, cells = ind["placements"].pop(uid)
-
-        if b_type == "R":
-            remove_residential(ind, uid, val, cells)
-        else:
-            remove_utility(ind, uid, val, cells)
-
+        if b_type == "R": remove_residential(ind, uid, val, cells)
+        else: remove_utility(ind, uid, val, cells)
         remove_active_uid(ind, uid)
         return [b_id, r, c, b_type, val, cells]
 
-    def snapshot_solution(ind):
-        out = []
-        for uid in ind["active_uids"]:
-            b_id, r, c, _, _, _ = ind["placements"][uid]
-            out.append((b_id, r, c))
-        return out
-
-    def clone_individual(ind):
-        new_ind = make_empty_individual()
-        for uid in ind["active_uids"]:
-            b_id, r, c, _, _, _ = ind["placements"][uid]
-            add_new(new_ind, b_id, r, c)
-        return new_ind
-
-    def internal_score(ind):
-        return ind["score"]
-
     # =========================================================
-    # Region helpers for coverage-aware repair
+    # População e Helpers
     # =========================================================
+    def build_from_solution(solution):
+        ind = make_empty_individual()
+        for b_id, r, c in solution: add_new(ind, b_id, r, c)
+        return ind
+
+    def greedy_seed():
+        return build_from_solution(greedy(city))
+
     def get_region_residential_uids(ind, r0, c0, r1, c1):
         out = []
         for uid in ind["active_uids"]:
@@ -303,57 +248,22 @@ def genetic_algorithm(
 
     def estimate_utility_gain(ind, proj, r, c, region_res_uids):
         cells = can_place(ind, proj, r, c)
-        if cells is False:
-            return -1, None
-
-        target_res = set(region_res_uids)
+        if cells is False: return -1, None
         affected_res = {}
         st = proj.service_type
-
         for cell in cells:
             for nr, nc in get_influence_diamond(cell.r, cell.c, D):
-                res_uid = ind["residential_at"][nr][nc]
-                if res_uid is not None and res_uid in target_res:
+                res_uid = ind["residential_at"].get((nr, nc))
+                if res_uid is not None and res_uid in region_res_uids:
                     affected_res[res_uid] = True
-
         gain = 0
         for res_uid in affected_res:
-            cov = ind["res_coverage"].get(res_uid, {})
-            if cov.get(st, 0) == 0:
+            if ind["res_coverage"].get(res_uid, {}).get(st, 0) == 0:
                 gain += ind["placements"][res_uid][4]
-
         return gain, cells
-
-    def sample_positions_for_project_near_region(proj, r0, c0, r1, c1, samples=20):
-        positions = []
-
-        rr_min = max(0, r0 - D - 3)
-        rr_max = min(H - proj.h, r1 + D + 3)
-        cc_min = max(0, c0 - D - 3)
-        cc_max = min(W - proj.w, c1 + D + 3)
-
-        if rr_min > rr_max or cc_min > cc_max:
-            return positions
-
-        for _ in range(samples):
-            rr = random.randint(rr_min, rr_max)
-            cc = random.randint(cc_min, cc_max)
-            positions.append((rr, cc))
-
-        return positions
-
-    # =========================================================
-    # Construction / seeding
-    # =========================================================
-    def build_from_solution(solution):
-        ind = make_empty_individual()
-        for b_id, r, c in solution:
-            add_new(ind, b_id, r, c)
-        return ind
 
     def guided_random_fill_region(ind, r0, c0, r1, c1, attempts_scale=1.0):
         area = (r1 - r0 + 1) * (c1 - c0 + 1)
-
         util_rounds = max(8, min(40, int(area / 800) + int(8 * attempts_scale)))
         res_attempts = max(80, min(1200, int(area / 20) + int(80 * attempts_scale)))
 
@@ -361,307 +271,136 @@ def genetic_algorithm(
             region_res_uids = get_region_residential_uids(ind, r0, c0, r1, c1)
             best_choice = None
             best_gain = -1
-
-            shuffled_types = utility_types[:]
-            random.shuffle(shuffled_types)
-
-            for st in shuffled_types:
+            for st in random.sample(utility_types, min(len(utility_types), 3)):
                 for proj in utility_candidates_by_type[st]:
-                    for rr, cc in sample_positions_for_project_near_region(
-                        proj, r0, c0, r1, c1, samples=10
-                    ):
+                    for _ in range(10):
+                        rr = random.randint(max(0, r0 - D - 3), min(H - proj.h, r1 + D + 3))
+                        cc = random.randint(max(0, c0 - D - 3), min(W - proj.w, c1 + D + 3))
                         gain, _ = estimate_utility_gain(ind, proj, rr, cc, region_res_uids)
                         if gain > best_gain:
-                            best_gain = gain
-                            best_choice = (proj.project_id, rr, cc)
-
-            if best_choice is not None and best_gain >= 0:
-                add_new(ind, best_choice[0], best_choice[1], best_choice[2])
+                            best_gain, best_choice = gain, (proj.project_id, rr, cc)
+            if best_choice and best_gain >= 0:
+                add_new(ind, *best_choice)
 
         for _ in range(res_attempts):
             proj = random.choice(top_res_projects)
-
-            if random.random() < 0.80:
-                rr = random.randint(max(0, r0 - D), min(H - proj.h, r1 + D))
-                cc = random.randint(max(0, c0 - D), min(W - proj.w, c1 + D))
-            else:
-                if ind["active_uids"]:
-                    uid = random.choice(ind["active_uids"])
-                    _, br, bc, _, _, _ = ind["placements"][uid]
-                    rr = max(0, min(H - proj.h, br + random.randint(-D - 4, D + 4)))
-                    cc = max(0, min(W - proj.w, bc + random.randint(-D - 4, D + 4)))
-                else:
-                    rr = random.randint(0, max(0, H - proj.h))
-                    cc = random.randint(0, max(0, W - proj.w))
-
+            rr = random.randint(max(0, r0 - D), min(H - proj.h, r1 + D))
+            cc = random.randint(max(0, c0 - D), min(W - proj.w, c1 + D))
             add_new(ind, proj.project_id, rr, cc)
 
-        second_util_rounds = max(4, util_rounds // 3)
-        for _ in range(second_util_rounds):
-            region_res_uids = get_region_residential_uids(ind, r0, c0, r1, c1)
-            best_choice = None
-            best_gain = -1
-
-            shuffled_types = utility_types[:]
-            random.shuffle(shuffled_types)
-
-            for st in shuffled_types:
-                for proj in utility_candidates_by_type[st]:
-                    for rr, cc in sample_positions_for_project_near_region(
-                        proj, r0, c0, r1, c1, samples=8
-                    ):
-                        gain, _ = estimate_utility_gain(ind, proj, rr, cc, region_res_uids)
-                        if gain > best_gain:
-                            best_gain = gain
-                            best_choice = (proj.project_id, rr, cc)
-
-            if best_choice is not None and best_gain > 0:
-                add_new(ind, best_choice[0], best_choice[1], best_choice[2])
-
-    def guided_random_individual():
-        ind = make_empty_individual()
-        guided_random_fill_region(ind, 0, 0, H - 1, W - 1, attempts_scale=2.0)
-        return ind
-
-    def greedy2_seed():
-        # greedy2(city) -> solution
-        sol = greedy2(city)
-        return build_from_solution(sol)
-
     # =========================================================
-    # Strong mutation: destroy & repair
+    # Operadores Evolutivos
     # =========================================================
     def destroy_and_repair(ind):
         child = clone_individual(ind)
-
         r0, c0, r1, c1 = random_window()
-
-        to_remove = []
-        for uid in list(child["active_uids"]):
-            if placement_intersects_rect(child, uid, r0, c0, r1, c1):
-                to_remove.append(uid)
-
-        random.shuffle(to_remove)
-        for uid in to_remove:
-            remove_uid(child, uid)
-
+        to_remove = [uid for uid in child["active_uids"] if placement_intersects_rect(child, uid, r0, c0, r1, c1)]
+        for uid in to_remove: remove_uid(child, uid)
         guided_random_fill_region(child, r0, c0, r1, c1, attempts_scale=1.0)
         return child
 
-    # =========================================================
-    # Population initialization
-    # =========================================================
-    population = [greedy2_seed()]
-
-    while len(population) < population_size:
-        base = clone_individual(population[0])
-        n_mut = random.randint(8, 20)
-
-        for _ in range(n_mut):
-            if random.random() < 0.60:
-                base = destroy_and_repair(base)
-            else:
-                if base["active_uids"]:
-                    uid = random.choice(base["active_uids"])
-                    old = remove_uid(base, uid)
-                    if old is not None:
-                        old_b, old_r, old_c, _, _, _ = old
-                        proj = city.get_project(old_b)
-                        rr = max(0, min(H - proj.h, old_r + random.randint(-neighborhood_radius, neighborhood_radius)))
-                        cc = max(0, min(W - proj.w, old_c + random.randint(-neighborhood_radius, neighborhood_radius)))
-                        if add_new(base, old_b, rr, cc) is False:
-                            add_new(base, old_b, old_r, old_c)
-
-        population.append(base)
-
-    # =========================================================
-    # Selection
-    # =========================================================
-    def tournament_select(pop):
-        sample = random.sample(pop, min(tournament_size, len(pop)))
-        return max(sample, key=internal_score)
-
-    # =========================================================
-    # Spatial crossover
-    # =========================================================
     def crossover(parent1, parent2):
         r0, c0, r1, c1 = random_window()
-
-        child1 = make_empty_individual()
-        child2 = make_empty_individual()
-
-        p1_inside, p1_outside = [], []
-        p2_inside, p2_outside = [], []
+        child1, child2 = make_empty_individual(), make_empty_individual()
 
         for uid in parent1["active_uids"]:
             b_id, r, c, _, _, cells = parent1["placements"][uid]
-            if rect_intersects_cells(r0, c0, r1, c1, cells):
-                p1_inside.append((b_id, r, c))
-            else:
-                p1_outside.append((b_id, r, c))
+            if rect_intersects_cells(r0, c0, r1, c1, cells): add_new(child1, b_id, r, c)
+            else: add_new(child2, b_id, r, c)
 
         for uid in parent2["active_uids"]:
             b_id, r, c, _, _, cells = parent2["placements"][uid]
-            if rect_intersects_cells(r0, c0, r1, c1, cells):
-                p2_inside.append((b_id, r, c))
-            else:
-                p2_outside.append((b_id, r, c))
+            if rect_intersects_cells(r0, c0, r1, c1, cells): add_new(child2, b_id, r, c)
+            else: add_new(child1, b_id, r, c)
 
-        for b_id, r, c in p1_inside:
-            add_new(child1, b_id, r, c)
-        for b_id, r, c in p2_outside:
-            add_new(child1, b_id, r, c)
-
-        for b_id, r, c in p2_inside:
-            add_new(child2, b_id, r, c)
-        for b_id, r, c in p1_outside:
-            add_new(child2, b_id, r, c)
-
+        # Repara as "Cicatrizes" da fronteira do corte!
+        guided_random_fill_region(child1, r0-D, c0-D, r1+D, c1+D, attempts_scale=0.5)
+        guided_random_fill_region(child2, r0-D, c0-D, r1+D, c1+D, attempts_scale=0.5)
         return child1, child2
 
-    # =========================================================
-    # Light mutation
-    # =========================================================
-    def light_mutate(ind):
-        child = clone_individual(ind)
+    def memetic_local_search(ind, steps=15):
+        """Pequeno Hill Climbing após mutação para refinar espaços vazios."""
+        for _ in range(steps):
+            if not ind["active_uids"]: break
+            op = random.choices(["ADD", "MOVE"], weights=[0.4, 0.6])[0]
 
-        if not child["active_uids"]:
-            return guided_random_individual()
+            if op == "ADD":
+                proj = random.choice(top_res_projects if random.random() < 0.7 else utility_candidates_by_type[random.choice(utility_types)])
+                r, c = random.randint(0, H - proj.h), random.randint(0, W - proj.w)
+                add_new(ind, proj.project_id, r, c)
+            elif op == "MOVE":
+                uid = random.choice(ind["active_uids"])
+                old = remove_uid(ind, uid)
+                old_b, old_r, old_c = old[0], old[1], old[2]
+                proj = city.get_project(old_b)
+                nr = max(0, min(H - proj.h, old_r + random.randint(-2, 2)))
+                nc = max(0, min(W - proj.w, old_c + random.randint(-2, 2)))
 
-        op = random.choices(
-            ["ADD", "MOVE", "CHANGE", "REMOVE"],
-            weights=[0.20, 0.35, 0.25, 0.20],
-            k=1,
-        )[0]
-
-        if op == "REMOVE":
-            uid = random.choice(child["active_uids"])
-            remove_uid(child, uid)
-            return child
-
-        if op == "ADD":
-            for _ in range(max_mutation_tries):
-                choose_res = random.random() < 0.70
-                if choose_res and top_res_projects:
-                    proj = random.choice(top_res_projects)
+                prev_score = ind["score"]
+                if add_new(ind, old_b, nr, nc) is not False:
+                    if ind["score"] < prev_score:
+                        remove_uid(ind, ind["next_uid"] - 1)
+                        add_new(ind, old_b, old_r, old_c) # Reverte se for pior
                 else:
-                    st = random.choice(utility_types)
-                    proj = random.choice(utility_candidates_by_type[st])
-
-                if child["active_uids"] and random.random() < 0.75:
-                    uid = random.choice(child["active_uids"])
-                    _, br, bc, _, _, _ = child["placements"][uid]
-                    rr = max(0, min(H - proj.h, br + random.randint(-D - 4, D + 4)))
-                    cc = max(0, min(W - proj.w, bc + random.randint(-D - 4, D + 4)))
-                else:
-                    rr = random.randint(0, max(0, H - proj.h))
-                    cc = random.randint(0, max(0, W - proj.w))
-
-                if add_new(child, proj.project_id, rr, cc) is not False:
-                    break
-            return child
-
-        uid = random.choice(child["active_uids"])
-        old = remove_uid(child, uid)
-        if old is None:
-            return child
-
-        old_b, old_r, old_c, old_type, _, _ = old
-        old_proj = city.get_project(old_b)
-
-        if op == "MOVE":
-            for _ in range(max_mutation_tries):
-                rr = max(0, min(H - old_proj.h, old_r + random.randint(-neighborhood_radius, neighborhood_radius)))
-                cc = max(0, min(W - old_proj.w, old_c + random.randint(-neighborhood_radius, neighborhood_radius)))
-                if add_new(child, old_b, rr, cc) is not False:
-                    return child
-
-            add_new(child, old_b, old_r, old_c)
-            return child
-
-        if op == "CHANGE":
-            for _ in range(max_mutation_tries):
-                if random.random() < 0.70 and old_type == "R" and top_res_projects:
-                    proj = random.choice(top_res_projects)
-                elif random.random() < 0.50:
-                    st = random.choice(utility_types)
-                    proj = random.choice(utility_candidates_by_type[st])
-                else:
-                    proj = random.choice(projects)
-
-                rr = max(0, min(H - proj.h, old_r))
-                cc = max(0, min(W - proj.w, old_c))
-
-                if add_new(child, proj.project_id, rr, cc) is not False:
-                    return child
-
-            add_new(child, old_b, old_r, old_c)
-            return child
-
-        add_new(child, old_b, old_r, old_c)
-        return child
-
-    def mutate(ind):
-        if random.random() < destroy_repair_rate:
-            return destroy_and_repair(ind)
-        return light_mutate(ind)
+                    add_new(ind, old_b, old_r, old_c)
+        return ind
 
     # =========================================================
-    # Evolution loop
+    # Ciclo Principal
     # =========================================================
-    best_individual = max(population, key=internal_score)
-    best_score = internal_score(best_individual)
+    population = [greedy_seed()]
+    while len(population) < population_size:
+        pop_ind = destroy_and_repair(population[0])
+        population.append(memetic_local_search(pop_ind, steps=50))
+
+    best_individual = max(population, key=lambda x: x["score"])
+    best_score = best_individual["score"]
     best_generation = 0
-
-    print(f"Initial best internal score: {best_score}")
 
     for gen in range(1, generations + 1):
         if time.time() - t0 > max_runtime_s * 0.98:
-            print("  [INFO] Time budget reached: stopping GA early.")
             break
 
-        ranked = sorted(population, key=internal_score, reverse=True)
+        ranked = sorted(population, key=lambda x: x["score"], reverse=True)
         next_population = [clone_individual(ind) for ind in ranked[:elite_size]]
 
         while len(next_population) < population_size:
-            p1 = tournament_select(population)
-            p2 = tournament_select(population)
+            # Torneio
+            p1 = max(random.sample(population, tournament_size), key=lambda x: x["score"])
+            p2 = max(random.sample(population, tournament_size), key=lambda x: x["score"])
 
             if random.random() < crossover_rate:
                 c1, c2 = crossover(p1, p2)
             else:
                 c1, c2 = clone_individual(p1), clone_individual(p2)
 
-            if random.random() < mutation_rate:
-                c1 = mutate(c1)
-            if random.random() < mutation_rate:
-                c2 = mutate(c2)
+            # Mutação e Memetic Search
+            if random.random() < destroy_repair_rate:
+                c1 = destroy_and_repair(c1)
+            c1 = memetic_local_search(c1)
 
             next_population.append(c1)
+
             if len(next_population) < population_size:
+                if random.random() < destroy_repair_rate:
+                    c2 = destroy_and_repair(c2)
+                c2 = memetic_local_search(c2)
                 next_population.append(c2)
 
         population = next_population
 
-        gen_best = max(population, key=internal_score)
-        gen_best_score = internal_score(gen_best)
-
-        if gen_best_score > best_score:
+        gen_best = max(population, key=lambda x: x["score"])
+        if gen_best["score"] > best_score:
             best_individual = clone_individual(gen_best)
-            best_score = gen_best_score
+            best_score = gen_best["score"]
             best_generation = gen
 
         if gen % 5 == 0 or gen == 1:
-            avg_score = sum(internal_score(ind) for ind in population) / len(population)
-            best_len = len(best_individual["active_uids"])
-            print(
-                f"  Generation {gen}/{generations} | "
-                f"best_internal={gen_best_score} | global_best={best_score} | "
-                f"avg={avg_score:.2f} | placements_best={best_len}"
-            )
+            avg_score = sum(ind["score"] for ind in population) / len(population)
+            print(f"  Generation {gen}/{generations} | global_best={best_score} | avg={avg_score:.2f}")
 
     dt = time.time() - t0
-    final_solution = snapshot_solution(best_individual)
+    final_solution = [(b_id, r, c) for b_id, r, c, _, _, _ in best_individual["placements"].values()]
 
     print(f"Final best internal score: {best_score}")
     print(f"Best found on generation: {best_generation}")
