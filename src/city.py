@@ -75,7 +75,7 @@ class City:
 
             # Optional baseline
             "greedy": ("algorithms.greedy", "greedy"),
-            "greedy_dc": ("algorithms.greedy_dc", "greedy_dc"),
+            "greedy2": ("algorithms.greedy2", "greedy2"),
         }
 
         if name not in mapping:
@@ -123,7 +123,19 @@ class City:
         peak_mem_mb = peak_mem / (1024 * 1024)
         score = self.get_score(solution)
 
-        save_metrics_to_csv(self, func_name, execution_time, peak_mem_mb, score, params_str)
+        placements_list = self._extract_placements(solution)
+        total_p = len(placements_list)
+        res_p = 0
+        util_p = 0
+
+        for p in placements_list:
+            proj = self.get_project(p["project_id"])
+            if proj.build_type == "R":
+                res_p += 1
+            else:
+                util_p += 1
+
+        save_metrics_to_csv(self, func_name, execution_time, peak_mem_mb, score, params_str, total_p, res_p, util_p)
 
         return solution, score
 
