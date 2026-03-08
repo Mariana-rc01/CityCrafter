@@ -24,19 +24,6 @@ def tabu_search(city, max_iterations=2500, tabu_tenure=50, neighborhood_size=30,
 
     tabu_list = deque(maxlen=tabu_tenure)
 
-    # PREPROCESSING: Select the best Residential and 1 of each Utility
-    best_res_id = max(
-        (pid for pid, proj in enumerate(city.projects) if proj.build_type == "R"),
-        key=lambda pid: city.get_project(pid).capacity / max(1, city.get_project(pid).h + city.get_project(pid).w)
-    )
-
-    best_utils = []
-    seen = set()
-    for pid, proj in enumerate(city.projects):
-        if proj.build_type == "U" and proj.service_type not in seen:
-            seen.add(proj.service_type)
-            best_utils.append(pid)
-
     print("========== TABU SEARCH OPTIMIZED ==========")
     print(f"Grid: {H} x {W} | D={D} | Projects={city.B}")
     print("Start building...")
@@ -184,56 +171,16 @@ def tabu_search(city, max_iterations=2500, tabu_tenure=50, neighborhood_size=30,
         placements[uid] = [b, r, c, b_type, val]
         add_active_uid(uid)
 
-
     # Initial Solution
     t_init_start = time.time()
 
-    if H == 1000 and W == 1000 and D == 10 and city.B == 180:
-        print("[MODE] Initial Solution => Running GREEDY Algorithm Seed (1000x1000 D=10 B=180)")
+    print("[MODE] Initial Solution => Running GREEDY Algorithm Seed")
 
-        greedy_placements = greedy(city, max_runtime_s=270)
-        for b_id, r, c in greedy_placements:
-            place(b_id, r, c)
+    greedy_placements = greedy(city, max_runtime_s=270)
+    for b_id, r, c in greedy_placements:
+        place(b_id, r, c)
 
-        print(f"  -> Greedy Seed placed {len(placements)} buildings.")
-
-    else:
-        print("[MODE] Initial Solution => Residential-first + utilities around")
-
-        res_proj = city.get_project(best_res_id)
-        res_h, res_w = res_proj.h, res_proj.w
-
-        placed_res = 0
-        placed_util = 0
-
-        # Scans the grid in dynamic jumps based on optimal building size
-        for r in range(0, H, res_h):
-            if r % 60 == 0:
-                print(f"  Scan row {r}/{H} | placements: {len(placements)} | R={placed_res} U={placed_util}")
-
-            for c in range(0, W, res_w):
-                # Try to place the super-residential building
-                if place(best_res_id, r, c)[0]:
-                    placed_res += 1
-
-                    # Immediately after placing a residence, try to surround with 1 of each service
-                    for u_id in best_utils:
-                        u_proj = city.get_project(u_id)
-                        placed = False
-                        for dr in range(-D, D + 1):
-                            for dc in range(-D, D + 1):
-                                # Respect the actual maximum distance
-                                if abs(dr) + abs(dc) > D:
-                                    continue
-
-                                ur, uc = r + dr, c + dc
-                                if can_place(u_proj, ur, uc):
-                                    if place(u_id, ur, uc)[0]:
-                                        placed_util += 1
-                                        placed = True
-                                        break
-                            if placed:
-                                break
+    print(f"  -> Greedy Seed placed {len(placements)} buildings.")
 
     best_global_score = current_score
     best_global_placements = [(p[0], p[1], p[2]) for p in placements.values()]

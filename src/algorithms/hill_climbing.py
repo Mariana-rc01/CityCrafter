@@ -2,26 +2,12 @@ import random, time
 from collections import defaultdict
 from coordinates import Coordinates
 from algorithms.greedy import greedy
+from algorithms.greedy2 import greedy2
 
 def hill_climbing(city, max_iterations=5000, patience=500, min_delta=2, use_restart=True, max_restarts=1):
 
     t0 = time.time()
     H, W, D = city.H, city.W, city.D
-
-    # Preprocessing: best blocks
-    # Best residential
-    best_res_id = max(
-        (pid for pid, proj in enumerate(city.projects) if proj.build_type == "R"),
-        key=lambda pid: city.get_project(pid).capacity / max(1, city.get_project(pid).h + city.get_project(pid).w)
-    )
-
-    # Best utilities (one per type)
-    best_utils = []
-    seen = set()
-    for pid, proj in enumerate(city.projects):
-        if proj.build_type == "U" and proj.service_type not in seen:
-            seen.add(proj.service_type)
-            best_utils.append(pid)
 
     print("========== HILL CLIMBING ==========")
     print(f"Grid: {H} x {W} | D={D} | Projects={city.B}")
@@ -99,49 +85,17 @@ def hill_climbing(city, max_iterations=5000, patience=500, min_delta=2, use_rest
             return p
 
         # Initial Solution
-
         # Check if city matches requested characteristics:
-        if H == 1000 and W == 1000 and D == 10 and city.B == 180:
-            print("[MODE] Initial Solution => Running GREEDY Algorithm Seed (1000x1000 D=10 B=180)")
+        print("[MODE] Initial Solution => Running GREEDY Algorithm Seed")
 
-            # Calls greedy algorithm with reasonable time limit
-            greedy_placements = greedy(city, max_runtime_s=540)
+        # Calls greedy algorithm with reasonable time limit
+        greedy_placements = greedy(city, max_runtime_s=540)
 
-            # Inject greedy results into Hill Climbing state
-            for b_id, r, c in greedy_placements:
-                place(b_id, r, c)
+        # Inject greedy results into Hill Climbing state
+        for b_id, r, c in greedy_placements:
+            place(b_id, r, c)
 
-            print(f"  -> Greedy Seed placed {len(placements)} buildings.")
-
-        else:
-            print("[MODE] Initial Solution => Residential-first + utilities around")
-            res_proj = city.get_project(best_res_id)
-            res_h, res_w = res_proj.h, res_proj.w
-
-            placed_res = 0
-            placed_util = 0
-
-            for r in range(0, H, res_h):
-                if r % 60 == 0:
-                    print(f"  Scan row {r}/{H} | placements: {len(placements)}")
-                for c in range(0, W, res_w):
-                    if place(best_res_id, r, c):
-                        placed_res += 1
-                        for u_id in best_utils:
-                            u_proj = city.get_project(u_id)
-                            placed = False
-                            for dr in range(-D, D + 1):
-                                for dc in range(-D, D + 1):
-                                    if abs(dr) + abs(dc) > D:
-                                        continue
-                                    ur, uc = r + dr, c + dc
-                                    if can_place(u_proj, ur, uc):
-                                        place(u_id, ur, uc)
-                                        placed_util += 1
-                                        placed = True
-                                        break
-                                if placed:
-                                    break
+        print(f"  -> Greedy Seed placed {len(placements)} buildings.")
 
         current_score = calculate_score()
         best_score = current_score
