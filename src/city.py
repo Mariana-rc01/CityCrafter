@@ -75,7 +75,6 @@ class City:
 
             # Optional baseline
             "greedy": ("algorithms.greedy", "greedy"),
-            "greedy2": ("algorithms.greedy2", "greedy2"),
         }
 
         if name not in mapping:

@@ -9,14 +9,14 @@ def greedy(city,
            max_utility_types=8,
            hub_step=None,
            max_hubs=None,
-           max_candidates_per_hub=900):
+           max_candidates_per_hub=900,
+           top_local_res=5):
 
     random.seed(seed)
     t0 = time.time()
 
     H, W, D = city.H, city.W, city.D
     projects = city.projects
-
 
     # ---- Helpers: placement + overlaps ----
     occupied = [[False] * W for _ in range(H)]
@@ -39,7 +39,6 @@ def greedy(city,
             occupied[cell.r][cell.c] = True
         placements.append((pid, r, c))
 
-
     # ---- Split projects ----
     residential = [p for p in projects if p.build_type == "R"]
     utilities = [p for p in projects if p.build_type == "U"]
@@ -47,7 +46,7 @@ def greedy(city,
     def res_quality(p):
         # dense capacity is generally good
         hcnt = max(1, len(p.hash_offsets))
-        return p.capacity / (hcnt ** 0.85) # small penalty for large projects
+        return p.capacity / (hcnt ** 0.85)  # small penalty for large projects
 
     residential_sorted = sorted(residential, key=res_quality, reverse=True)
     top_res = residential_sorted[:top_k_res]
@@ -67,7 +66,10 @@ def greedy(city,
 
     utility_types = sorted(
         best_utility_by_type.keys(),
-        key=lambda st: (len(best_utility_by_type[st].hash_offsets), best_utility_by_type[st].h * best_utility_by_type[st].w)
+        key=lambda st: (
+            len(best_utility_by_type[st].hash_offsets),
+            best_utility_by_type[st].h * best_utility_by_type[st].w
+        )
     )
     utility_types = utility_types[:max_utility_types]
 
@@ -77,129 +79,61 @@ def greedy(city,
     print(f"Selected utility types (max): {len(utility_types)} (max_utility_types={max_utility_types})")
     print("Start building...")
 
+    # ---- MODE A: D <= 5 ----
+    if D <= 5:
+        print("[MODE] D <= 5 => Dense-block sweep (greedy2-style + top local residentials)")
 
-    # ---- MODE A: D <= 2 ----
-    if D <= 2:
-        print("[MODE] D <= 2 => Residential-first + utilities around (local greedy)")
+        # Top residenciais a testar em cada bloco
+        best_res_candidates = sorted(
+            residential,
+            key=lambda p: p.capacity / max(1, p.h + p.w),
+            reverse=True
+        )[:top_local_res]
 
-        # Map each occupied hash cell of a utility to its service type
-        utility_type_at = [[-1] * W for _ in range(H)]
+        if not best_res_candidates:
+            print("No residential projects available.")
+            print("======== END GREEDY ========")
+            return placements
 
-        # Precompute manhattan offsets up to D
-        manh_offsets = []
-        for dr in range(-D, D + 1):
-            for dc in range(-D, D + 1):
-                if abs(dr) + abs(dc) <= D:
-                    manh_offsets.append((dr, dc))
+        # Usa o melhor só para definir a malha de varrimento
+        base_res = best_res_candidates[0]
+        res_h, res_w = base_res.h, base_res.w
 
-        def register_utility_cells(pid, r, c, st):
-            proj = city.get_project(pid)
-            for cell in proj.absolute_hash_cells(Coordinates(r, c)):
-                utility_type_at[cell.r][cell.c] = st
-
-        def reachable_types_for_res(pid_r, r, c):
-            proj_r = city.get_project(pid_r)
-            seen = set()
-            for cell in proj_r.absolute_hash_cells(Coordinates(r, c)):
-                cr, cc = cell.r, cell.c
-                for dr, dc in manh_offsets:
-                    nr, nc = cr + dr, cc + dc
-                    if 0 <= nr < H and 0 <= nc < W:
-                        st = utility_type_at[nr][nc]
-                        if st != -1:
-                            seen.add(st)
-                            if len(seen) >= len(utility_types):
-                                return seen
-            return seen
-
-        def try_place_missing_utilities_around_res(pid_r, r, c):
-            proj_r = city.get_project(pid_r)
-            res_cells = proj_r.absolute_hash_cells(Coordinates(r, c))
-
-            # Determine already reachable types
-            have = reachable_types_for_res(pid_r, r, c)
-
-            candidates = []
-            R = D + 2
-            for cell in res_cells:
-                for dr in range(-R, R + 1):
-                    for dc in range(-R, R + 1):
-                        candidates.append((cell.r + dr, cell.c + dc))
-
-            uniq = []
-            seen_pos = set()
-            for rr, cc in candidates:
-                if (rr, cc) in seen_pos:
-                    continue
-                seen_pos.add((rr, cc))
-                uniq.append((rr, cc))
-
-            # Shuffle so we don't always pack the same pattern
-            random.shuffle(uniq)
-
-            placed = 0
-            for st in utility_types:
-                if st in have:
-                    continue
-
-                uproj = best_utility_by_type[st]
-                pid_u = uproj.project_id
-
-                tries = 0
-                for rr, cc in uniq:
-                    if time.time() - t0 > max_runtime_s * 0.98:
-                        return placed
-
-                    rr = max(0, min(H - uproj.h, rr))
-                    cc = max(0, min(W - uproj.w, cc))
-
-                    if can_place(pid_u, rr, cc):
-                        do_place(pid_u, rr, cc)
-                        register_utility_cells(pid_u, rr, cc, st)
-                        have.add(st)
-                        placed += 1
-                        break
-
-                    tries += 1
-                    if tries >= 200:  # tries per type
-                        break
-
-            return placed
-
-        # ---- Main loop: place many residences quickly ----
-        stride = 3 if D == 1 else 2
+        # Um utility por tipo
+        best_utils = [best_utility_by_type[st].project_id for st in utility_types]
 
         placed_res = 0
         placed_util = 0
 
-        for r in range(0, H, stride):
-            if time.time() - t0 > max_runtime_s * 0.92:
-                print("  [INFO] Time budget: stopping residential scan early.")
+        # Varrimento por blocos
+        for r in range(0, H, res_h):
+            if time.time() - t0 > max_runtime_s * 0.98:
+                print("  [INFO] Time budget: stopping dense sweep early.")
                 break
 
             if r % 60 == 0:
                 print(f"  Scan row {r}/{H} | placements: {len(placements)} | R={placed_res} U={placed_util}")
 
-            for c in range(0, W, stride):
-                if time.time() - t0 > max_runtime_s * 0.92:
+            for c in range(0, W, res_w):
+                if time.time() - t0 > max_runtime_s * 0.98:
                     break
 
-                # Try best residential first
                 best_pid = None
                 best_score = -1
                 best_pos = None
 
-                # Small cap to keep speed stable
-                for proj_r in top_res[:25]:
+                # Testa top 3/top 5 residenciais neste bloco
+                for proj_r in best_res_candidates:
                     rr = min(r, H - proj_r.h)
                     cc = min(c, W - proj_r.w)
+
                     if rr < 0 or cc < 0:
                         continue
                     if not can_place(proj_r.project_id, rr, cc):
                         continue
 
-                    # quick heuristic: capacity density only
-                    score = proj_r.capacity / (max(1, len(proj_r.hash_offsets)) ** 0.35) # light penalty for large residences.
+                    score = proj_r.capacity / max(1, proj_r.h + proj_r.w)
+
                     if score > best_score:
                         best_score = score
                         best_pid = proj_r.project_id
@@ -208,22 +142,37 @@ def greedy(city,
                 if best_pid is None:
                     continue
 
-                # Place residential
+                # Coloca a melhor residência encontrada para este bloco
                 do_place(best_pid, best_pos[0], best_pos[1])
                 placed_res += 1
 
-                # Immediately add utilities around it
-                placed_util += try_place_missing_utilities_around_res(best_pid, best_pos[0], best_pos[1])
+                placed_r, placed_c = best_pos
 
-                # Safety: stop if we already placed a lot
-                if len(placements) > 90000 and D == 1:
-                    break
+                # Tenta colocar uma utility de cada tipo à volta da residência
+                for u_id in best_utils:
+                    if time.time() - t0 > max_runtime_s * 0.98:
+                        break
+
+                    placed = False
+                    for dr in range(-D, D + 1):
+                        for dc in range(-D, D + 1):
+                            if abs(dr) + abs(dc) > D:
+                                continue
+
+                            ur, uc = placed_r + dr, placed_c + dc
+
+                            if can_place(u_id, ur, uc):
+                                do_place(u_id, ur, uc)
+                                placed_util += 1
+                                placed = True
+                                break
+                        if placed:
+                            break
 
         dt = time.time() - t0
         print(f"Greedy finished (MODE A): placements={len(placements)} | time={dt:.2f}s")
         print("======== END GREEDY ========")
         return placements
-
 
     # ---- MODE B: D > 2  (hubs + fill, with spatial bins) ----
     print("[MODE] D > 2 => Hub strategy + spatial bins")

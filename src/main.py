@@ -6,8 +6,8 @@ from utils.visualization import visualize_city
 def choose_algorithm():
     algorithms = [
         ("greedy", "Greedy"),
-        ("greedy2", "Greedy DC"),
         ("hill climbing", "Hill Climbing"),
+        ("simulated annealing", "Simulated Annealing"),
         ("tabu search", "Tabu Search"),
         ("genetic", "Genetic")
     ]
