@@ -1,2 +1,2 @@
-Dataset,Algorithm,Grid Size,Score,Time (s),Peak Memory (MB),Parameters
-a_example,tabu_search,4x7,125,3.0010,0.0816,"max_iterations=2500, tabu_tenure=50, neighborhood_size=30, max_runtime_s=540"
+Dataset,Algorithm,Grid Size,Total Placements,Residential,Utility,Score,Time (s),Peak Memory (MB),Parameters
+a_example,hill_climbing,4x7,5,3,2,125,0.0409,0.0339,"max_iterations=5000, patience=500, min_delta=2, use_restart=True, max_restarts=1"
