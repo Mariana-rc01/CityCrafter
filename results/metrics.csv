@@ -1,13 +1,1 @@
 Dataset,Algorithm,Grid Size,Total Placements,Residential,Utility,Score,Time (s),Peak Memory (MB),Parameters
-a_example,hill_climbing,4x7,5,3,2,125,0.0409,0.0339,"max_iterations=5000, patience=500, min_delta=2, use_restart=True, max_restarts=1"
-b_short_walk,hill_climbing,1000x1000,82607,20778,61829,1201720,491.8615,207.9887,"max_iterations=5000, patience=500, min_delta=2, use_restart=True, max_restarts=1"
-c_going_green,hill_climbing,1000x1000,4823,750,4073,1550844,974.1534,578.7591,"max_iterations=5000, patience=500, min_delta=2, use_restart=True, max_restarts=1"
-d_wide_selection,hill_climbing,1000x1000,210700,27280,183420,956416,272.9359,660.1965,"max_iterations=5000, patience=500, min_delta=2, use_restart=True, max_restarts=1"
-e_precise_fit,hill_climbing,1000x1000,15387,7839,7548,1715450,618.0922,429.1408,"max_iterations=5000, patience=500, min_delta=2, use_restart=True, max_restarts=1"
-f_different_footprints,hill_climbing,1000x1000,33098,29759,3339,2185747,657.5288,362.9766,"max_iterations=5000, patience=500, min_delta=2, use_restart=True, max_restarts=1"
-a_example,tabu_search,4x7,5,3,2,125,2.9247,0.0230,"max_iterations=2500, tabu_tenure=50, neighborhood_size=30, max_runtime_s=540"
-b_short_walk,tabu_search,1000x1000,82037,21000,61037,1233597,41.8811,323.3065,"max_iterations=2500, tabu_tenure=50, neighborhood_size=30, max_runtime_s=540"
-c_going_green,tabu_search,1000x1000,5149,792,4357,1514915,532.2236,606.7367,"max_iterations=2500, tabu_tenure=50, neighborhood_size=30, max_runtime_s=540"
-d_wide_selection,tabu_search,1000x1000,210123,28170,181953,984056,327.8976,774.5992,"max_iterations=2500, tabu_tenure=50, neighborhood_size=30, max_runtime_s=1000"
-e_precise_fit,tabu_search,1000x1000,15731,9818,5913,1875335,714.1362,527.2088,"max_iterations=2500, tabu_tenure=50, neighborhood_size=30, max_runtime_s=1000"
-f_different_footprints,tabu_search,1000x1000,34343,30713,3630,2287442,341.2296,566.7602,"max_iterations=2500, tabu_tenure=50, neighborhood_size=30, max_runtime_s=1000"

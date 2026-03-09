@@ -4,29 +4,9 @@ import math
 from coordinates import Coordinates
 from algorithms.greedy import greedy
 
-
-def simulated_annealing(
-    city,
-    max_iterations=12000,
-    initial_temperature=2500.0,
-    cooling_rate=0.9975,
-    min_temperature=0.15,
-    reheats=1,
-    reheat_factor=0.35,
-    neighborhood_radius=4,
-    top_k_res=35,
-    max_utility_types=12,
-    add_weight=0.18,
-    remove_weight=0.10,
-    move_weight=0.40,
-    change_weight=0.32,
-    max_runtime_s=540,
-    seed=0,
-    use_greedy_init=True,
-    same_type_change_prob=0.82,
-    similar_shape_change_prob=0.70,
-    shape_slack=2,
-):
+#def simulated_annealing(city, max_iterations=22000, initial_temperature=4200.0, cooling_rate=0.9982, min_temperature=0.08, reheats=3, reheat_factor=0.40, neighborhood_radius=5, top_k_res=45, max_utility_types=15, add_weight=0.16, remove_weight=0.10, move_weight=0.48, change_weight=0.26, max_runtime_s=720, seed=2, use_greedy_init=True, same_type_change_prob=0.92, similar_shape_change_prob=0.85, shape_slack=2):
+#def simulated_annealing(city, max_iterations=12000, initial_temperature=2500.0, cooling_rate=0.9975, min_temperature=0.15, reheats=1, reheat_factor=0.35, neighborhood_radius=4, top_k_res=35, max_utility_types=12, add_weight=0.18, remove_weight=0.10, move_weight=0.40, change_weight=0.32, max_runtime_s=540, seed=0, use_greedy_init=True, same_type_change_prob=0.82, similar_shape_change_prob=0.70, shape_slack=2):
+def simulated_annealing(city, max_iterations=12000, initial_temperature=1200.0, cooling_rate=0.997, min_temperature=0.2, reheats=1, reheat_factor=0.25, neighborhood_radius=3, top_k_res=35, max_utility_types=12, add_weight=0.15, remove_weight=0.12, move_weight=0.45, change_weight=0.28, max_runtime_s=540, seed=1, use_greedy_init=True, same_type_change_prob=0.88, similar_shape_change_prob=0.75, shape_slack=2,):
     """
     Simulated Annealing com:
     - score incremental

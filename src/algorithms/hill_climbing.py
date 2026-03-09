@@ -2,8 +2,9 @@ import random, time
 from collections import defaultdict
 from coordinates import Coordinates
 from algorithms.greedy import greedy
-from algorithms.greedy2 import greedy2
 
+#def hill_climbing(city, max_iterations=8000, patience=1500, min_delta=1, use_restart=True, max_restarts=1):
+#def hill_climbing(city, max_iterations=4000, patience=800, min_delta=2, use_restart=False, max_restarts=0):
 def hill_climbing(city, max_iterations=5000, patience=500, min_delta=2, use_restart=True, max_restarts=1):
 
     t0 = time.time()
