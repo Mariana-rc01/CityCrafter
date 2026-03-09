@@ -11,7 +11,7 @@ def save_metrics_to_csv(city, algo_name, exec_time, peak_mem_mb, score, paramete
         writer = csv.writer(f)
 
         if not file_exists:
-            writer.writerow(["Dataset", "Algorithm", "Grid Size", "Score", "Total Placements", "Residential", "Utility", "Time (s)", "Peak Memory (MB)", "Parameters"])
+            writer.writerow(["Dataset", "Algorithm", "Grid Size", "Total Placements", "Residential", "Utility", "Score", "Time (s)", "Peak Memory (MB)", "Parameters"])
 
         grid_size = f"{city.H}x{city.W}"
 

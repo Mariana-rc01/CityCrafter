@@ -1,4 +1,4 @@
-Dataset,Algorithm,Grid Size,Score,Total Placements,Residential,Utility,Time (s),Peak Memory (MB),Parameters
+Dataset,Algorithm,Grid Size,Total Placements,Residential,Utility,Score,Time (s),Peak Memory (MB),Parameters
 a_example,hill_climbing,4x7,4,3,1,75,0.0216,0.0068,"max_iterations=5000, patience=500, min_delta=2, use_restart=True, max_restarts=1"
 a_example,hill_climbing,4x7,4,3,1,75,0.0255,0.0066,"max_iterations=5000, patience=500, min_delta=2, use_restart=True, max_restarts=1"
 a_example,hill_climbing,4x7,4,3,1,75,0.0232,0.0066,"max_iterations=5000, patience=500, min_delta=2, use_restart=True, max_restarts=1"

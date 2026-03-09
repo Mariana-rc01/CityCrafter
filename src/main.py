@@ -36,13 +36,17 @@ def choose_dataset():
         "d": "data/d_wide_selection.in",
         "e": "data/e_precise_fit.in",
         "f": "data/f_different_footprints.in",
+        "g": "tests/g_joindb.in",
+        "h": "tests/h_compact_balanced.in",
+        "i": "tests/i_joinbd.in",
+        "j": "tests/j_precise_fit.in"
     }
 
     print("=== Choose Dataset or 'q' to quit ===")
-    print("Available: a, b, c, d, e, f")
+    print("Available: a, b, c, d, e, f, g, h, i, j")
 
     while True:
-        letter = input("Dataset letter (a-f): ").strip().lower()
+        letter = input("Dataset letter (a-j): ").strip().lower()
         if letter == "q":
             return "q"
         if letter in datasets:
