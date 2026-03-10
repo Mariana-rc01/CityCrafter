@@ -1,6 +1,5 @@
 import random, time
 from collections import defaultdict
-from coordinates import Coordinates
 from algorithms.greedy import greedy
 
 #def hill_climbing(city, max_iterations=8000, patience=1500, min_delta=1, use_restart=True, max_restarts=1):

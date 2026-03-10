@@ -1,6 +1,5 @@
 import random, time
 from collections import deque
-from coordinates import Coordinates
 from algorithms.greedy import greedy
 
 #def tabu_search(city, max_iterations=3500, tabu_tenure=40, neighborhood_size=40, max_runtime_s=1000):
