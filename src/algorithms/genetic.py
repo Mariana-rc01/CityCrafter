@@ -36,18 +36,17 @@ def genetic_algorithm(
     # Ajuste automático dos limites da população
     # ---------------------------------------------------------
     if min_population_size is None:
-        min_population_size = max(8, population_size - max(2, population_size // 4))
+        min_population_size = max(6, population_size - max(2, population_size // 4))
 
     if max_population_size is None:
-        # limite adaptado ao tamanho/complexidade da instância
         if B <= 20:
-            max_population_size = max(population_size + 4, 16)
+            max_population_size = max(population_size + 4, 12)
         elif D <= 2:
-            max_population_size = max(population_size + 6, 24)
+            max_population_size = max(population_size + 6, 16)
         elif D >= 15:
-            max_population_size = max(population_size + 10, 28)
+            max_population_size = max(population_size + 8, 18)
         else:
-            max_population_size = max(population_size + 8, 24)
+            max_population_size = max(population_size + 6, 16)
 
     if population_growth_step is None:
         population_growth_step = max(2, population_size // 3)
@@ -312,9 +311,6 @@ def genetic_algorithm(
             add_new(ind, b_id, r, c)
         return ind
 
-    def greedy_seed():
-        return build_from_solution(greedy(city))
-
     def diversified_seed(base_solution):
         ind = build_from_solution(base_solution)
         return destroy_and_repair(ind)
@@ -322,7 +318,7 @@ def genetic_algorithm(
     def spawn_from_parent(parent, strong=False):
         child = clone_individual(parent)
         child = destroy_and_repair(child)
-        child = memetic_local_search(child, steps=24 if strong else 14)
+        child = memetic_local_search(child, steps=16 if strong else 10)
         return child
 
     # =========================================================
@@ -424,16 +420,12 @@ def genetic_algorithm(
     # Heuristics for crossovers
     # =========================================================
     def placement_local_score(ind, uid):
-        b_id, r, c, b_type, val, cells = ind["placements"][uid]
+        _, _, _, b_type, val, cells = ind["placements"][uid]
 
         if b_type == "R":
             cov = ind["res_coverage"].get(uid, {})
             distinct_services = sum(1 for cnt in cov.values() if cnt > 0)
-            return (
-                1.60 * distinct_services * val
-                + 0.30 * val
-                - 0.18 * len(cells)
-            )
+            return 1.60 * distinct_services * val + 0.30 * val - 0.18 * len(cells)
 
         st = val
         helped_capacity = 0
@@ -454,11 +446,7 @@ def genetic_algorithm(
                 if cov.get(st, 0) == 1:
                     uniquely_helped_capacity += cap
 
-        return (
-            1.80 * uniquely_helped_capacity
-            + 0.30 * helped_capacity
-            - 0.20 * len(cells)
-        )
+        return 1.80 * uniquely_helped_capacity + 0.30 * helped_capacity - 0.20 * len(cells)
 
     def add_placements_in_order(child, placements_list):
         placements_list.sort(reverse=True, key=lambda x: x[0])
@@ -466,7 +454,7 @@ def genetic_algorithm(
             add_new(child, b_id, r, c)
 
     def estimate_utility_marginal_impact(ind, uid):
-        b_id, r, c, b_type, service_type, cells = ind["placements"][uid]
+        _, _, _, b_type, service_type, cells = ind["placements"][uid]
         if b_type != "U":
             return -1
 
@@ -488,11 +476,7 @@ def genetic_algorithm(
                 if cov.get(service_type, 0) == 1:
                     unique_support_capacity += cap
 
-        return (
-            2.20 * unique_support_capacity
-            + 0.40 * total_reached_capacity
-            - 0.22 * len(cells)
-        )
+        return 2.20 * unique_support_capacity + 0.40 * total_reached_capacity - 0.22 * len(cells)
 
     def select_best_anchor_utilities(parent, max_anchors=3):
         utility_uids = [
@@ -513,22 +497,14 @@ def genetic_algorithm(
         return [uid for _, uid in ranked[:chosen_k]]
 
     def cluster_item_priority(item, parent):
-        uid, b_id, r, c, b_type, val, cells = item
+        uid, _, _, _, b_type, val, cells = item
 
         if b_type == "U":
-            return (
-                3,
-                estimate_utility_marginal_impact(parent, uid),
-                -len(cells),
-            )
+            return 3, estimate_utility_marginal_impact(parent, uid), -len(cells)
 
         cov = parent["res_coverage"].get(uid, {})
         distinct_services = sum(1 for cnt in cov.values() if cnt > 0)
-        return (
-            2,
-            1.4 * distinct_services * val + 0.25 * val,
-            -len(cells),
-        )
+        return 2, 1.4 * distinct_services * val + 0.25 * val, -len(cells)
 
     def get_cluster_from_utility(parent, utility_uid):
         cluster = []
@@ -755,10 +731,7 @@ def genetic_algorithm(
             if not ind["active_uids"]:
                 break
 
-            op = random.choices(
-                ["ADD", "MOVE", "REMOVE"],
-                weights=[0.35, 0.50, 0.15],
-            )[0]
+            op = random.choices(["ADD", "MOVE", "REMOVE"], weights=[0.35, 0.50, 0.15])[0]
 
             if op == "ADD":
                 if random.random() < 0.72:
@@ -831,6 +804,8 @@ def genetic_algorithm(
 
         elite_pool = ranked[:max(1, min(len(ranked), elite_size + 1))]
         while len(expanded) < target_size:
+            if time.time() - t0 > max_runtime_s * 0.90:
+                break
             parent = random.choice(elite_pool)
             expanded.append(spawn_from_parent(parent, strong=True))
 
@@ -848,8 +823,19 @@ def genetic_algorithm(
     base_seed = greedy(city)
     population = [build_from_solution(base_seed)]
 
+    # Inicialização controlada pelo tempo
+    init_local_steps = 8 if D <= 5 else 12
+    init_budget = 0.45 if H * W >= 500_000 else 0.35
+
     while len(population) < current_population_target:
-        population.append(memetic_local_search(diversified_seed(base_seed), steps=30))
+        if time.time() - t0 > max_runtime_s * init_budget:
+            break
+        ind = diversified_seed(base_seed)
+        ind = memetic_local_search(ind, steps=init_local_steps)
+        population.append(ind)
+
+    current_population_target = len(population)
+    base_population_size = min(base_population_size, current_population_target)
 
     best_individual = max(population, key=lambda x: x["score"])
     best_score = best_individual["score"]
@@ -867,6 +853,9 @@ def genetic_algorithm(
         next_population = [clone_individual(ind) for ind in ranked[:eff_elite_size]]
 
         while len(next_population) < current_population_target:
+            if time.time() - t0 > max_runtime_s * 0.98:
+                break
+
             sample_size = min(tournament_size, len(population))
             p1 = max(random.sample(population, sample_size), key=lambda x: x["score"])
             p2 = max(random.sample(population, sample_size), key=lambda x: x["score"])
@@ -880,20 +869,23 @@ def genetic_algorithm(
                 if random.random() < destroy_repair_rate:
                     c1 = destroy_and_repair(c1)
                 else:
-                    c1 = memetic_local_search(c1, steps=20)
+                    c1 = memetic_local_search(c1, steps=14)
             else:
-                c1 = memetic_local_search(c1, steps=8)
+                c1 = memetic_local_search(c1, steps=6)
 
             next_population.append(c1)
 
             if len(next_population) < current_population_target:
+                if time.time() - t0 > max_runtime_s * 0.98:
+                    break
+
                 if random.random() < mutation_rate:
                     if random.random() < destroy_repair_rate:
                         c2 = destroy_and_repair(c2)
                     else:
-                        c2 = memetic_local_search(c2, steps=20)
+                        c2 = memetic_local_search(c2, steps=14)
                 else:
-                    c2 = memetic_local_search(c2, steps=8)
+                    c2 = memetic_local_search(c2, steps=6)
 
                 next_population.append(c2)
 
@@ -925,11 +917,12 @@ def genetic_algorithm(
 
                 if current_population_target > old_target:
                     population = expand_population(population, current_population_target)
+                    current_population_target = len(population)
 
                 stagnation_counter = 0
 
         if gen % 5 == 0 or gen == 1:
-            avg_score = sum(ind["score"] for ind in population) / len(population)
+            avg_score = sum(ind["score"] for ind in population) / max(1, len(population))
             print(
                 f"  Generation {gen}/{generations} | "
                 f"global_best={best_score} | avg={avg_score:.2f} | "
