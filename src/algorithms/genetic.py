@@ -6,24 +6,24 @@ from algorithms.greedy import greedy
 
 def genetic_algorithm(
     city,
-    population_size=30,
-    generations=80,
+    population_size=10,
+    generations=35,
     elite_size=2,
     tournament_size=3,
     crossover_rate=0.90,
     mutation_rate=0.40,
-    max_runtime_s=3000,
+    max_runtime_s=1000,
     seed=0,
     top_k_res=40,
     destroy_repair_rate=0.45,
-    crossover_type="spatial",
+    crossover_type="clustered",
 
     # --- adaptive population ---
-    min_population_size=20,
-    max_population_size=50,
-    stagnation_generations=8,
-    population_growth_step=8,
-    population_shrink_step=4,
+    min_population_size=6,
+    max_population_size=18,
+    stagnation_generations=6,
+    population_growth_step=4,
+    population_shrink_step=2,
 ):
     """
     Memetic Genetic Algorithm for urban planning optimization.
