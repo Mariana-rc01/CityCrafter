@@ -9,6 +9,20 @@ from utils.metrics import save_metrics_to_csv
 class City:
     """Holds one problem instance: grid size, walking distance, and building projects."""
     def __init__(self, H, W, D, B, projects, dataset_name="Unknown"):
+        """
+        Initialize a City instance.
+
+        Args:
+            H: Grid height
+            W: Grid width
+            D: Maximum walking distance (Manhattan distance)
+            B: Number of building projects
+            projects: List of building project objects
+            dataset_name: Name of the dataset (default: "Unknown")
+
+        Raises:
+            ValueError: If B does not match the number of projects
+        """
         self.H = H
         self.W = W
         self.D = D
@@ -20,6 +34,7 @@ class City:
             raise ValueError("B does not match number of parsed projects")
 
     def get_project(self, project_id):
+        """Get a project by its ID."""
         return self.projects[project_id]
 
     def print_city(self, show_plans=False):
@@ -54,8 +69,22 @@ class City:
 
     def make_city(self, algorithm, *args, **kwargs):
         """
-        Runs the chosen algorithm (implemented in ./algorithms), then computes and returns:
-        (solution, score)
+        Run the chosen algorithm and compute the solution score.
+
+        Dynamically loads and executes the specified optimization algorithm,
+        measures execution time and memory usage, and saves metrics to CSV.
+
+        Args:
+            algorithm: Name of the algorithm to run (e.g., "hill climbing", "genetic", "greedy")
+            *args: Additional positional arguments for the algorithm
+            **kwargs: Additional keyword arguments for the algorithm
+
+        Returns:
+            tuple: (solution, score) where solution is a list of placements and score is the objective value
+
+        Raises:
+            ValueError: If the algorithm name is unknown
+            NotImplementedError: If the algorithm function is not found in the module
         """
         name = (algorithm or "").strip().lower()
 
@@ -139,6 +168,18 @@ class City:
         return solution, score
 
     def get_score(self, solution):
+        """
+        Calculate the total score for a given solution.
+
+        Score is computed as: sum over all residential buildings of
+        (capacity * number of distinct reachable service types)
+
+        Args:
+            solution: Solution in any accepted format (list of placements or object with .placements)
+
+        Returns:
+            int: Total score of the solution
+        """
         placements = self._extract_placements(solution)
 
         H, W, D = self.H, self.W, self.D
@@ -182,16 +223,23 @@ class City:
     # Internal helpers
     def _extract_placements(self, solution):
         """
-        Normalizes different solution formats into a list of dictionaries:
+        Normalize different solution formats into a list of dictionaries.
+
+        Converts various input formats to a standardized format:
         { 'project_id': int, 'top_left': Coordinates }
-        Accepts:
-        - solution.placements (list)
-        - a list itself
-        Each placement can be:
-        - object with .project_id and .top_left
-        - tuple (project_id, r, c)
-        - tuple (project_id, Coordinates)
-        - tuple (project_id, (r, c))
+
+        Args:
+            solution: Can be:
+                - An object with .placements attribute
+                - A list of placements
+                Where each placement can be:
+                - Object with .project_id and .top_left
+                - Tuple (project_id, r, c)
+                - Tuple (project_id, Coordinates)
+                - Tuple (project_id, (r, c))
+
+        Returns:
+            list: List of dictionaries with 'project_id' and 'top_left' keys
         """
         if solution is None:
             return []
@@ -208,7 +256,18 @@ class City:
         return placements
 
     def _parse_one_placement(self, item):
-        """Parse one placement in a flexible way (see _extract_placements)."""
+        """
+        Parse one placement item in a flexible way.
+
+        Args:
+            item: A placement in various formats (see _extract_placements)
+
+        Returns:
+            tuple: (project_id, Coordinates) representing the placement
+
+        Raises:
+            ValueError: If the placement format is invalid
+        """
         # Object case: item.project_id + item.top_left
         if hasattr(item, "project_id") and hasattr(item, "top_left"):
             pid = item.project_id
@@ -233,7 +292,16 @@ class City:
         raise ValueError("Invalid placement format in solution")
 
     def _min_manhattan_between_hash_sets(self, cells_a, cells_b):
-        """Return min Manhattan distance between any coord in cells_a and any coord in cells_b."""
+        """
+        Calculate minimum Manhattan distance between two sets of cells.
+
+        Args:
+            cells_a: First set of Coordinates
+            cells_b: Second set of Coordinates
+
+        Returns:
+            int: Minimum Manhattan distance between any pair of cells, or 10^9 if either set is empty
+        """
         if not cells_a or not cells_b:
             return 10**9
 

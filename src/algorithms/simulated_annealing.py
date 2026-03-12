@@ -8,15 +8,40 @@ from algorithms.greedy import greedy
 #def simulated_annealing(city, max_iterations=12000, initial_temperature=2500.0, cooling_rate=0.9975, min_temperature=0.15, reheats=1, reheat_factor=0.35, neighborhood_radius=4, top_k_res=35, max_utility_types=12, add_weight=0.18, remove_weight=0.10, move_weight=0.40, change_weight=0.32, max_runtime_s=540, seed=0, use_greedy_init=True, same_type_change_prob=0.82, similar_shape_change_prob=0.70, shape_slack=2):
 def simulated_annealing(city, max_iterations=12000, initial_temperature=1200.0, cooling_rate=0.997, min_temperature=0.2, reheats=1, reheat_factor=0.25, neighborhood_radius=3, top_k_res=35, max_utility_types=12, add_weight=0.15, remove_weight=0.12, move_weight=0.45, change_weight=0.28, max_runtime_s=540, seed=1, use_greedy_init=True, same_type_change_prob=0.88, similar_shape_change_prob=0.75, shape_slack=2,):
     """
-    Simulated Annealing com:
-    - score incremental
-    - warm start por greedy
-    - operador CHANGE inteligente
+    Simulated Annealing algorithm for urban planning optimization.
 
-    Retorna:
-        list[(project_id, row, col)]
+    Features:
+    - Incremental score calculation
+    - Warm start with greedy solution
+    - Intelligent CHANGE operator that preserves building types and shapes
+    - Temperature-based acceptance of worse solutions to escape local optima
+    - Multiple reheating cycles
+
+    Args:
+        city: City instance containing grid, projects and constraints
+        max_iterations: Maximum number of iterations
+        initial_temperature: Starting temperature for annealing
+        cooling_rate: Temperature reduction factor per iteration
+        min_temperature: Minimum temperature before reheating
+        reheats: Number of reheating cycles allowed
+        reheat_factor: Fraction of initial temperature for reheat
+        neighborhood_radius: Maximum distance for MOVE operations
+        top_k_res: Top K residential projects to consider
+        max_utility_types: Maximum utility types to select
+        add_weight: Weight for ADD operation
+        remove_weight: Weight for REMOVE operation
+        move_weight: Weight for MOVE operation
+        change_weight: Weight for CHANGE operation
+        max_runtime_s: Maximum runtime in seconds
+        seed: Random seed for reproducibility
+        use_greedy_init: Whether to use greedy warm start
+        same_type_change_prob: Probability of keeping same building type in CHANGE
+        similar_shape_change_prob: Probability of choosing similar shape in CHANGE
+        shape_slack: Shape tolerance for similar shape matching
+
+    Returns:
+        List of tuples (building_id, row, col) representing the best solution
     """
-
     random.seed(seed)
     t0 = time.time()
 
@@ -84,12 +109,14 @@ def simulated_annealing(city, max_iterations=12000, initial_temperature=1200.0, 
     # HELPERS
     # =========================================================
     def get_cells(b, r, c):
+        """Get cells occupied by a building at position (r,c) with caching."""
         key = (b, r, c)
         if key not in cell_cache:
             cell_cache[key] = city.get_project(b).absolute_hash_cells(Coordinates(r, c))
         return cell_cache[key]
 
     def get_influence_diamond(r, c, dist):
+        """Generate all cells within Manhattan distance 'dist' from position (r,c)."""
         for dr in range(-dist, dist + 1):
             rem = dist - abs(dr)
             for dc in range(-rem, rem + 1):
@@ -98,10 +125,12 @@ def simulated_annealing(city, max_iterations=12000, initial_temperature=1200.0, 
                     yield nr, nc
 
     def add_active_uid(uid):
+        """Add a UID to the active list with O(1) indexing."""
         uid_to_idx[uid] = len(active_uids)
         active_uids.append(uid)
 
     def remove_active_uid(uid):
+        """Remove a UID from the active list with O(1) operation."""
         idx = uid_to_idx.pop(uid)
         last_uid = active_uids.pop()
         if idx < len(active_uids):
@@ -109,6 +138,7 @@ def simulated_annealing(city, max_iterations=12000, initial_temperature=1200.0, 
             uid_to_idx[last_uid] = idx
 
     def can_place(proj, r, c):
+        """Check if a project can be placed at position (r,c) without conflicts."""
         if r < 0 or c < 0 or r + proj.h > H or c + proj.w > W:
             return False
         cells = get_cells(proj.project_id, r, c)
@@ -118,6 +148,7 @@ def simulated_annealing(city, max_iterations=12000, initial_temperature=1200.0, 
         return cells
 
     def place_residential(uid, capacity, cells):
+        """Place a residential building and calculate score gain from service coverage."""
         gain = 0
         cov = {}
 
@@ -136,6 +167,7 @@ def simulated_annealing(city, max_iterations=12000, initial_temperature=1200.0, 
         return gain
 
     def remove_residential(uid, capacity, cells):
+        """Remove a residential building and calculate score loss."""
         loss = 0
         cov = res_coverage.pop(uid)
 
@@ -150,6 +182,7 @@ def simulated_annealing(city, max_iterations=12000, initial_temperature=1200.0, 
         return loss
 
     def place_utility(service_type, cells):
+        """Place a utility building and calculate score gain from new coverage."""
         gain = 0
         affected = set()
 
@@ -172,6 +205,7 @@ def simulated_annealing(city, max_iterations=12000, initial_temperature=1200.0, 
         return gain
 
     def remove_utility(service_type, cells):
+        """Remove a utility building and calculate score loss from lost coverage."""
         loss = 0
         affected = set()
 
@@ -197,6 +231,7 @@ def simulated_annealing(city, max_iterations=12000, initial_temperature=1200.0, 
         return loss
 
     def place(b, r, c):
+        """Place a building at position (r,c) and return success status and UID."""
         nonlocal current_score, next_uid
 
         proj = city.get_project(b)
@@ -220,6 +255,7 @@ def simulated_annealing(city, max_iterations=12000, initial_temperature=1200.0, 
         return True, uid
 
     def remove(uid):
+        """Remove a building by UID and return its data for potential restoration."""
         nonlocal current_score
 
         b, r, c, b_type, val, cells = placements.pop(uid)
@@ -234,6 +270,7 @@ def simulated_annealing(city, max_iterations=12000, initial_temperature=1200.0, 
         return [b, r, c, b_type, val, cells]
 
     def insert_with_uid(uid, b, r, c, b_type, val, cells):
+        """Insert a building with a specific UID (for restoration after rejection)."""
         nonlocal current_score
 
         if b_type == "R":
@@ -246,9 +283,11 @@ def simulated_annealing(city, max_iterations=12000, initial_temperature=1200.0, 
         add_active_uid(uid)
 
     def capture_solution():
+        """Capture current solution as a list of (building_id, row, col) tuples."""
         return [(p[0], p[1], p[2]) for p in placements.values()]
 
     def acceptance_probability(delta, temperature):
+        """Calculate probability of accepting a move based on score delta and temperature."""
         if delta >= 0:
             return 1.0
         if temperature <= 1e-12:
@@ -256,14 +295,17 @@ def simulated_annealing(city, max_iterations=12000, initial_temperature=1200.0, 
         return math.exp(delta / temperature)
 
     def accept_move(delta, temperature):
+        """Decide whether to accept a move using simulated annealing criterion."""
         return random.random() <= acceptance_probability(delta, temperature)
 
     def random_position_for(proj):
+        """Generate a random valid position for a project."""
         max_r = max(0, H - proj.h)
         max_c = max(0, W - proj.w)
         return random.randint(0, max_r), random.randint(0, max_c)
 
     def select_add_project():
+        """Select a project to add with bias towards top residential and utility candidates."""
         roll = random.random()
         if roll < 0.60 and top_res:
             return random.choice(top_res)
@@ -273,11 +315,19 @@ def simulated_annealing(city, max_iterations=12000, initial_temperature=1200.0, 
 
     def choose_similar_project(old_proj):
         """
-        Escolhe um projeto mais inteligente para CHANGE:
-        1) normalmente mantém o mesmo tipo
-        2) tenta shape semelhante
-        3) para R prefere boa razão capacidade/área
-        4) para U prefere utility compacta / tipo útil
+        Choose an intelligent replacement project for CHANGE operation.
+
+        Strategy:
+        1) Usually keeps the same building type
+        2) Tries to match similar shape
+        3) For residential, prefers good capacity/area ratio
+        4) For utility, prefers compact buildings with useful service types
+
+        Args:
+            old_proj: The project being replaced
+
+        Returns:
+            A project that is a good replacement candidate
         """
         target_type = old_proj.build_type
         if random.random() > same_type_change_prob:

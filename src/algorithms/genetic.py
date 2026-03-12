@@ -18,13 +18,42 @@ def genetic_algorithm(
     destroy_repair_rate=0.45,
     crossover_type="spatial",
 
-    # --- população adaptativa ---
+    # --- adaptive population ---
     min_population_size=20,
     max_population_size=50,
     stagnation_generations=8,
     population_growth_step=8,
     population_shrink_step=4,
 ):
+    """
+    Memetic Genetic Algorithm for urban planning optimization.
+
+    Combines genetic operators (crossover and mutation) with intensive local search
+    to find high-quality solutions for the problem of placing residential and utility
+    buildings on an urban grid.
+
+    Args:
+        city: City instance containing grid, projects and constraints
+        population_size: Initial population size
+        generations: Number of generations to run
+        elite_size: Number of elite individuals preserved
+        tournament_size: Tournament size for selection
+        crossover_rate: Crossover probability
+        mutation_rate: Mutation probability
+        max_runtime_s: Maximum runtime in seconds
+        seed: Random seed for reproducibility
+        top_k_res: Top K residential projects to consider
+        destroy_repair_rate: Destroy & repair rate in mutation
+        crossover_type: Crossover type ("spatial", "score_aware", "clustered")
+        min_population_size: Adaptive minimum population size
+        max_population_size: Adaptive maximum population size
+        stagnation_generations: Stagnation generations before expanding population
+        population_growth_step: Increment when expanding population
+        population_shrink_step: Decrement when shrinking population
+
+    Returns:
+        List of tuples (building_id, row, col) representing the best solution
+    """
     random.seed(seed)
     t0 = time.time()
 
@@ -33,7 +62,7 @@ def genetic_algorithm(
     B = city.B
 
     # ---------------------------------------------------------
-    # Ajuste automático dos limites da população
+    # Automatic population limits adjustment
     # ---------------------------------------------------------
     if min_population_size is None:
         min_population_size = max(6, population_size - max(2, population_size // 4))
@@ -98,12 +127,14 @@ def genetic_algorithm(
     # Low-level geometry helpers
     # =========================================================
     def get_cells(b_id, r, c):
+        """Get cells occupied by a project at position (r,c) with caching."""
         key = (b_id, r, c)
         if key not in cell_cache:
             cell_cache[key] = city.get_project(b_id).absolute_hash_cells(Coordinates(r, c))
         return cell_cache[key]
 
     def get_influence_cells(r, c):
+        """Return cells within influence area of distance D from position (r,c)."""
         key = (r, c)
         if key not in influence_cache:
             cells = []
@@ -117,12 +148,14 @@ def genetic_algorithm(
         return influence_cache[key]
 
     def rect_intersects_cells(r0, c0, r1, c1, cells):
+        """Check if any cell intersects the rectangle defined by (r0,c0) and (r1,c1)."""
         for cell in cells:
             if r0 <= cell.r <= r1 and c0 <= cell.c <= c1:
                 return True
         return False
 
     def random_window():
+        """Generate a random rectangular window in the grid for local operations."""
         h_span = max(10, min(H // 4, max(20, H // 8)))
         w_span = max(10, min(W // 4, max(20, W // 8)))
         r0 = random.randint(0, max(0, H - h_span))
@@ -132,12 +165,14 @@ def genetic_algorithm(
         return r0, c0, r1, c1
 
     def placement_center(cells):
+        """Calculate the geometric center of a set of cells."""
         sr = sum(cell.r for cell in cells)
         sc = sum(cell.c for cell in cells)
         n = max(1, len(cells))
         return sr / n, sc / n
 
     def placement_in_region(cells, r0, c0, r1, c1):
+        """Check if the center of a set of cells is within a region."""
         cr, cc = placement_center(cells)
         return r0 <= cr <= r1 and c0 <= cc <= c1
 
@@ -145,6 +180,7 @@ def genetic_algorithm(
     # Individual representation
     # =========================================================
     def make_empty_individual():
+        """Create an empty individual with initialized data structures."""
         return {
             "occupied": set(),
             "influence_grid": {},
@@ -158,6 +194,7 @@ def genetic_algorithm(
         }
 
     def clone_individual(ind):
+        """Create a deep copy of an individual."""
         return {
             "occupied": ind["occupied"].copy(),
             "influence_grid": {k: v.copy() for k, v in ind["influence_grid"].items()},
@@ -171,10 +208,12 @@ def genetic_algorithm(
         }
 
     def add_active_uid(ind, uid):
+        """Add a UID to the active list with O(1) indexing."""
         ind["uid_to_idx"][uid] = len(ind["active_uids"])
         ind["active_uids"].append(uid)
 
     def remove_active_uid(ind, uid):
+        """Remove a UID from the active list with O(1) operation."""
         idx = ind["uid_to_idx"].pop(uid)
         last_uid = ind["active_uids"].pop()
         if idx < len(ind["active_uids"]):
@@ -182,6 +221,7 @@ def genetic_algorithm(
             ind["uid_to_idx"][last_uid] = idx
 
     def can_place(ind, proj, r, c):
+        """Check if a project can be placed at position (r,c) without conflicts."""
         if r < 0 or r + proj.h > H or c < 0 or c + proj.w > W:
             return False
         cells = get_cells(proj.project_id, r, c)
@@ -191,6 +231,7 @@ def genetic_algorithm(
         return cells
 
     def place_residential(ind, uid, capacity, cells):
+        """Place a residential building and update score based on service coverage."""
         cov = {}
 
         for cell in cells:
@@ -208,6 +249,7 @@ def genetic_algorithm(
         ind["score"] += gain
 
     def remove_residential(ind, uid, capacity, cells):
+        """Remove a residential building and update the score accordingly."""
         cov = ind["res_coverage"].pop(uid, {})
         distinct_services = sum(1 for count in cov.values() if count > 0)
         loss = capacity * distinct_services
@@ -220,6 +262,7 @@ def genetic_algorithm(
         ind["score"] -= loss
 
     def place_utility(ind, uid, service_type, cells):
+        """Place a utility building and update residential coverage scores."""
         gain = 0
         affected = set()
 
@@ -243,6 +286,7 @@ def genetic_algorithm(
         ind["score"] += gain
 
     def remove_utility(ind, uid, service_type, cells):
+        """Remove a utility building and update residential coverage scores."""
         loss = 0
         affected = set()
 
@@ -270,6 +314,7 @@ def genetic_algorithm(
         ind["score"] -= loss
 
     def add_new(ind, b_id, r, c):
+        """Add a new building placement to the individual if valid."""
         proj = city.get_project(b_id)
         cells = can_place(ind, proj, r, c)
         if cells is False:
@@ -289,6 +334,7 @@ def genetic_algorithm(
         return uid
 
     def remove_uid(ind, uid):
+        """Remove a building placement by UID from the individual."""
         if uid not in ind["placements"]:
             return None
 
@@ -306,16 +352,19 @@ def genetic_algorithm(
     # Build / initialize
     # =========================================================
     def build_from_solution(solution):
+        """Build an individual from a list of (building_id, row, col) placements."""
         ind = make_empty_individual()
         for b_id, r, c in solution:
             add_new(ind, b_id, r, c)
         return ind
 
     def diversified_seed(base_solution):
+        """Create a diversified individual from a base solution using destroy-repair."""
         ind = build_from_solution(base_solution)
         return destroy_and_repair(ind)
 
     def spawn_from_parent(parent, strong=False):
+        """Spawn a new individual from a parent with mutation and local search."""
         child = clone_individual(parent)
         child = destroy_and_repair(child)
         child = memetic_local_search(child, steps=16 if strong else 10)
@@ -325,6 +374,7 @@ def genetic_algorithm(
     # Region fill / constructive helpers
     # =========================================================
     def get_region_residential_uids(ind, r0, c0, r1, c1):
+        """Get all residential UIDs that intersect with the given region."""
         out = []
         for uid in ind["active_uids"]:
             _, _, _, b_type, _, cells = ind["placements"][uid]
@@ -333,6 +383,7 @@ def genetic_algorithm(
         return out
 
     def estimate_utility_gain(ind, proj, r, c, region_res_uids_set):
+        """Estimate the gain from placing a utility at (r,c) for residentials in region."""
         cells = can_place(ind, proj, r, c)
         if cells is False:
             return -1
@@ -355,6 +406,7 @@ def genetic_algorithm(
         return gain - footprint_penalty
 
     def guided_random_fill_region(ind, r0, c0, r1, c1, attempts_scale=1.0):
+        """Fill a region with utilities and residentials using guided random placement."""
         r0 = max(0, r0)
         c0 = max(0, c0)
         r1 = min(H - 1, r1)
@@ -420,6 +472,7 @@ def genetic_algorithm(
     # Heuristics for crossovers
     # =========================================================
     def placement_local_score(ind, uid):
+        """Calculate a local quality score for a placement considering its context."""
         _, _, _, b_type, val, cells = ind["placements"][uid]
 
         if b_type == "R":
@@ -449,11 +502,13 @@ def genetic_algorithm(
         return 1.80 * uniquely_helped_capacity + 0.30 * helped_capacity - 0.20 * len(cells)
 
     def add_placements_in_order(child, placements_list):
+        """Add placements to child in descending priority order."""
         placements_list.sort(reverse=True, key=lambda x: x[0])
         for _, b_id, r, c in placements_list:
             add_new(child, b_id, r, c)
 
     def estimate_utility_marginal_impact(ind, uid):
+        """Estimate the marginal impact of a utility on residential coverage."""
         _, _, _, b_type, service_type, cells = ind["placements"][uid]
         if b_type != "U":
             return -1
@@ -479,6 +534,7 @@ def genetic_algorithm(
         return 2.20 * unique_support_capacity + 0.40 * total_reached_capacity - 0.22 * len(cells)
 
     def select_best_anchor_utilities(parent, max_anchors=3):
+        """Select the best utility placements to use as anchors for clustering."""
         utility_uids = [
             uid for uid in parent["active_uids"]
             if parent["placements"][uid][3] == "U"
@@ -497,6 +553,7 @@ def genetic_algorithm(
         return [uid for _, uid in ranked[:chosen_k]]
 
     def cluster_item_priority(item, parent):
+        """Calculate priority of an item within a cluster for ordering."""
         uid, _, _, _, b_type, val, cells = item
 
         if b_type == "U":
@@ -507,6 +564,7 @@ def genetic_algorithm(
         return 2, 1.4 * distinct_services * val + 0.25 * val, -len(cells)
 
     def get_cluster_from_utility(parent, utility_uid):
+        """Extract a cluster of buildings around a utility anchor."""
         cluster = []
 
         b_id, r, c, b_type, val, cells = parent["placements"][utility_uid]
@@ -548,6 +606,7 @@ def genetic_algorithm(
         return cluster
 
     def bounding_box_of_cluster(cluster, pad=D):
+        """Calculate the bounding box of a cluster with optional padding."""
         if not cluster:
             return 0, 0, H - 1, W - 1
 
@@ -572,6 +631,7 @@ def genetic_algorithm(
     # Evolution operators
     # =========================================================
     def destroy_and_repair(ind):
+        """Destroy a random region of the individual and repair with new placements."""
         child = clone_individual(ind)
         r0, c0, r1, c1 = random_window()
 
@@ -588,6 +648,7 @@ def genetic_algorithm(
         return child
 
     def spatial_crossover(parent1, parent2):
+        """Perform spatial crossover by swapping regions between parents."""
         r0, c0, r1, c1 = random_window()
         child1, child2 = make_empty_individual(), make_empty_individual()
 
@@ -632,6 +693,7 @@ def genetic_algorithm(
         return child1, child2
 
     def score_aware_crossover(parent1, parent2):
+        """Perform crossover based on placement quality scores."""
         child1, child2 = make_empty_individual(), make_empty_individual()
 
         ranked1 = [
@@ -670,6 +732,7 @@ def genetic_algorithm(
         return child1, child2
 
     def clustered_crossover(parent1, parent2):
+        """Perform crossover by exchanging clusters of related buildings."""
         child1, child2 = make_empty_individual(), make_empty_individual()
 
         anchor_utils_1 = select_best_anchor_utilities(parent1, max_anchors=3)
@@ -720,6 +783,7 @@ def genetic_algorithm(
         return child1, child2
 
     def crossover(parent1, parent2):
+        """Execute the selected crossover operator based on configuration."""
         if crossover_type == "score_aware":
             return score_aware_crossover(parent1, parent2)
         if crossover_type == "clustered":
@@ -727,6 +791,7 @@ def genetic_algorithm(
         return spatial_crossover(parent1, parent2)
 
     def memetic_local_search(ind, steps=12):
+        """Apply local search with ADD, MOVE, and REMOVE operations."""
         for _ in range(steps):
             if not ind["active_uids"]:
                 break
@@ -796,6 +861,7 @@ def genetic_algorithm(
     # Population adaptation helpers
     # =========================================================
     def expand_population(population, target_size):
+        """Expand population to target size by spawning from elite individuals."""
         if len(population) >= target_size:
             return population
 
@@ -812,6 +878,7 @@ def genetic_algorithm(
         return expanded
 
     def shrink_population(population, target_size):
+        """Shrink population to target size by keeping best individuals."""
         if len(population) <= target_size:
             return population
         ranked = sorted(population, key=lambda x: x["score"], reverse=True)
@@ -823,7 +890,7 @@ def genetic_algorithm(
     base_seed = greedy(city)
     population = [build_from_solution(base_seed)]
 
-    # Inicialização controlada pelo tempo
+    # Time-controlled initialization
     init_local_steps = 8 if D <= 5 else 12
     init_budget = 0.45 if H * W >= 500_000 else 0.35
 

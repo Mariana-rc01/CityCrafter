@@ -5,7 +5,23 @@ from algorithms.greedy import greedy
 #def tabu_search(city, max_iterations=3500, tabu_tenure=40, neighborhood_size=40, max_runtime_s=1000):
 #def tabu_search(city, max_iterations=3000, tabu_tenure=25, neighborhood_size=25, max_runtime_s=1000):
 def tabu_search(city, max_iterations=2500, tabu_tenure=50, neighborhood_size=30, max_runtime_s=1000):
+    """
+    Tabu Search algorithm for urban planning optimization.
 
+    Uses a tabu list to prevent cycling by marking recently visited moves as forbidden.
+    Starts from a greedy solution and iteratively explores neighborhoods while avoiding
+    tabu moves unless they lead to a new best solution (aspiration criterion).
+
+    Args:
+        city: City instance containing grid, projects and constraints
+        max_iterations: Maximum number of iterations
+        tabu_tenure: Number of iterations a move remains in the tabu list
+        neighborhood_size: Number of neighbor solutions to evaluate per iteration
+        max_runtime_s: Maximum runtime in seconds
+
+    Returns:
+        List of tuples (building_id, row, col) representing the best solution
+    """
     t0 = time.time()
     H, W, D = city.H, city.W, city.D
 
@@ -30,6 +46,7 @@ def tabu_search(city, max_iterations=2500, tabu_tenure=50, neighborhood_size=30,
     print("Start building...")
 
     def get_influence_diamond(r, c, dist):
+        """Generate all cells within Manhattan distance 'dist' from position (r,c)."""
         for dr in range(-dist, dist+1):
             rem = dist - abs(dr)
             for dc in range(-rem, rem+1):
@@ -38,10 +55,12 @@ def tabu_search(city, max_iterations=2500, tabu_tenure=50, neighborhood_size=30,
                     yield nr, nc
 
     def add_active_uid(uid):
+        """Add a UID to the active list with O(1) indexing."""
         uid_to_idx[uid] = len(active_uids)
         active_uids.append(uid)
 
     def remove_active_uid(uid):
+        """Remove a UID from the active list with O(1) operation."""
         idx = uid_to_idx.pop(uid)
         last_uid = active_uids.pop()
         if idx < len(active_uids):
@@ -49,6 +68,7 @@ def tabu_search(city, max_iterations=2500, tabu_tenure=50, neighborhood_size=30,
             uid_to_idx[last_uid] = idx
 
     def can_place(proj, r, c):
+        """Check if a project can be placed at position (r,c) without conflicts."""
         if r < 0 or r + proj.h > H or c < 0 or c + proj.w > W:
             return False
         for dr, dc in proj.hash_offsets:
@@ -57,6 +77,7 @@ def tabu_search(city, max_iterations=2500, tabu_tenure=50, neighborhood_size=30,
         return True
 
     def place_residential(uid, b_id, r, c, val):
+        """Place a residential building and calculate score gain from service coverage."""
         gain = 0
         cov = {}
         proj = city.get_project(b_id)
@@ -75,6 +96,7 @@ def tabu_search(city, max_iterations=2500, tabu_tenure=50, neighborhood_size=30,
         return gain
 
     def remove_residential(uid, b_id, r, c, val):
+        """Remove a residential building and calculate score loss."""
         loss = 0
         cov = res_coverage.pop(uid)
         for s, count in cov.items():
@@ -87,6 +109,7 @@ def tabu_search(city, max_iterations=2500, tabu_tenure=50, neighborhood_size=30,
         return loss
 
     def place_utility(b_id, r, c, s_type):
+        """Place a utility building and calculate score gain from new coverage."""
         gain = 0
         affected = set()
         proj = city.get_project(b_id)
@@ -107,6 +130,7 @@ def tabu_search(city, max_iterations=2500, tabu_tenure=50, neighborhood_size=30,
         return gain
 
     def remove_utility(b_id, r, c, s_type):
+        """Remove a utility building and calculate score loss from lost coverage."""
         loss = 0
         affected = set()
         proj = city.get_project(b_id)
@@ -131,6 +155,7 @@ def tabu_search(city, max_iterations=2500, tabu_tenure=50, neighborhood_size=30,
         return loss
 
     def place(b, r, c):
+        """Place a building at position (r,c) and return success status and UID."""
         nonlocal current_score, next_uid
         proj = city.get_project(b)
         if not can_place(proj, r, c):
@@ -151,6 +176,7 @@ def tabu_search(city, max_iterations=2500, tabu_tenure=50, neighborhood_size=30,
         return True, uid
 
     def remove(uid):
+        """Remove a building by UID and return its data for potential restoration."""
         nonlocal current_score
         p = placements.pop(uid)
         b, r, c, b_type, val = p
@@ -163,6 +189,7 @@ def tabu_search(city, max_iterations=2500, tabu_tenure=50, neighborhood_size=30,
         return p
 
     def insert_with_uid(uid, b, r, c, b_type, val):
+        """Insert a building with a specific UID (for restoration after evaluation)."""
         nonlocal current_score
         if b_type == "R":
             gain = place_residential(uid, b, r, c, val)

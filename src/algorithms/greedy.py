@@ -11,7 +11,27 @@ def greedy(city,
            max_hubs=None,
            max_candidates_per_hub=900,
            top_local_res=5):
+    """
+    Greedy algorithm for urban planning with adaptive strategies.
 
+    Uses different strategies based on the influence distance D:
+    - MODE A (D <= 5): Dense-block sweep with local residential placements
+    - MODE B (D > 5): Hub-based strategy with spatial binning
+
+    Args:
+        city: City instance containing grid, projects and constraints
+        seed: Random seed for reproducibility
+        max_runtime_s: Maximum runtime in seconds
+        top_k_res: Top K residential projects to consider
+        max_utility_types: Maximum number of utility types to select
+        hub_step: Step size for hub grid (auto-calculated if None)
+        max_hubs: Maximum number of hubs to try (auto-calculated if None)
+        max_candidates_per_hub: Maximum candidate positions per hub
+        top_local_res: Top residential projects for dense mode
+
+    Returns:
+        List of tuples (building_id, row, col) representing the solution
+    """
     random.seed(seed)
     t0 = time.time()
 
@@ -23,6 +43,7 @@ def greedy(city,
     placements = []  # list of (project_id, r, c)
 
     def can_place(pid, r, c):
+        """Check if a project can be placed at position (r,c) without overlaps."""
         proj = city.get_project(pid)
         tl = Coordinates(r, c)
         if not proj.fits_in_grid(tl, H, W):
@@ -33,6 +54,7 @@ def greedy(city,
         return True
 
     def do_place(pid, r, c):
+        """Place a project at position (r,c) and mark cells as occupied."""
         proj = city.get_project(pid)
         tl = Coordinates(r, c)
         for cell in proj.absolute_hash_cells(tl):
@@ -44,6 +66,7 @@ def greedy(city,
     utilities = [p for p in projects if p.build_type == "U"]
 
     def res_quality(p):
+        """Calculate quality metric for residential projects (capacity vs footprint)."""
         # dense capacity is generally good
         hcnt = max(1, len(p.hash_offsets))
         return p.capacity / (hcnt ** 0.85)  # small penalty for large projects
@@ -83,7 +106,7 @@ def greedy(city,
     if D <= 5:
         print("[MODE] D <= 5 => Dense-block sweep (greedy2-style + top local residentials)")
 
-        # Top residenciais a testar em cada bloco
+        # Top residential projects to test in each block
         best_res_candidates = sorted(
             residential,
             key=lambda p: p.capacity / max(1, p.h + p.w),
@@ -95,17 +118,17 @@ def greedy(city,
             print("======== END GREEDY ========")
             return placements
 
-        # Usa o melhor só para definir a malha de varrimento
+        # Uses the best one only to define the sweep grid
         base_res = best_res_candidates[0]
         res_h, res_w = base_res.h, base_res.w
 
-        # Um utility por tipo
+        # One utility per type
         best_utils = [best_utility_by_type[st].project_id for st in utility_types]
 
         placed_res = 0
         placed_util = 0
 
-        # Varrimento por blocos
+        # Block sweep
         for r in range(0, H, res_h):
             if time.time() - t0 > max_runtime_s * 0.98:
                 print("  [INFO] Time budget: stopping dense sweep early.")
@@ -122,7 +145,7 @@ def greedy(city,
                 best_score = -1
                 best_pos = None
 
-                # Testa top 3/top 5 residenciais neste bloco
+                # Tests top 3/top 5 residential projects in this block
                 for proj_r in best_res_candidates:
                     rr = min(r, H - proj_r.h)
                     cc = min(c, W - proj_r.w)
@@ -142,13 +165,13 @@ def greedy(city,
                 if best_pid is None:
                     continue
 
-                # Coloca a melhor residência encontrada para este bloco
+                # Places the best residential found for this block
                 do_place(best_pid, best_pos[0], best_pos[1])
                 placed_res += 1
 
                 placed_r, placed_c = best_pos
 
-                # Tenta colocar uma utility de cada tipo à volta da residência
+                # Tries to place one utility of each type around the residential
                 for u_id in best_utils:
                     if time.time() - t0 > max_runtime_s * 0.98:
                         break
@@ -179,6 +202,7 @@ def greedy(city,
 
     # ---- bbox helpers ----
     def project_hash_bbox(proj):
+        """Calculate the bounding box of a project's hash offsets."""
         drs = [dr for dr, _ in proj.hash_offsets]
         dcs = [dc for _, dc in proj.hash_offsets]
         return min(drs), max(drs), min(dcs), max(dcs)
@@ -188,10 +212,12 @@ def greedy(city,
         proj_bbox[p.project_id] = project_hash_bbox(p)
 
     def abs_hash_bbox(pid, r, c):
+        """Get absolute bounding box for a project placed at position (r,c)."""
         min_dr, max_dr, min_dc, max_dc = proj_bbox[pid]
         return (r + min_dr, r + max_dr, c + min_dc, c + max_dc)
 
     def rect_manhattan_dist(a, b):
+        """Calculate Manhattan distance between two rectangles."""
         a_r0, a_r1, a_c0, a_c1 = a
         b_r0, b_r1, b_c0, b_c1 = b
 
@@ -212,6 +238,7 @@ def greedy(city,
         return dr + dc
 
     def min_dist_hash_sets(cells_a, cells_b, cutoff):
+        """Calculate minimum Manhattan distance between two sets of cells with early cutoff."""
         if not cells_a or not cells_b:
             return 10**9
         if len(cells_a) > len(cells_b):
@@ -233,6 +260,7 @@ def greedy(city,
     bin_size = max(10, D + 8)
 
     def bin_key_from_bbox(b):
+        """Get spatial bin key from bounding box center."""
         r0, r1, c0, c1 = b
         cr = (r0 + r1) // 2
         cc = (c0 + c1) // 2
@@ -241,6 +269,7 @@ def greedy(city,
     bins = {}  # (br, bc) -> list of utility indices
 
     def register_utility(pid, r, c, st):
+        """Register a placed utility in the spatial index for fast lookups."""
         proj = city.get_project(pid)
         tl = Coordinates(r, c)
         cells = proj.absolute_hash_cells(tl)
@@ -251,6 +280,7 @@ def greedy(city,
         bins.setdefault(bk, []).append(idx)
 
     def nearby_utility_indices_for_bbox(bbox):
+        """Get utility indices in nearby spatial bins for a given bounding box."""
         r0, r1, c0, c1 = bbox
         cr = (r0 + r1) // 2
         cc = (c0 + c1) // 2
@@ -265,6 +295,7 @@ def greedy(city,
         return out
 
     def reachable_types_for_res(pid_r, rr, rc):
+        """Count how many distinct utility types are reachable from a residential placement."""
         if not utility_places:
             return 0
         proj_r = city.get_project(pid_r)
@@ -309,6 +340,7 @@ def greedy(city,
 
     # Spiral around hub for packing utilities
     def spiral_offsets(radius):
+        """Generate spiral offsets for placing utilities around a hub center."""
         offsets = [(0, 0)]
         for d in range(1, radius + 1):
             for dc in range(-d, d + 1):
@@ -366,6 +398,7 @@ def greedy(city,
         hubs_for_fill = hubs_for_fill[:350]
 
     def sample_positions_around(hub_r, hub_c, radius, budget):
+        """Sample candidate positions around a hub within the given radius."""
         candidates = []
         r0 = max(0, hub_r - radius)
         r1 = min(H - 1, hub_r + radius)

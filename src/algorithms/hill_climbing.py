@@ -5,7 +5,24 @@ from algorithms.greedy import greedy
 #def hill_climbing(city, max_iterations=8000, patience=1500, min_delta=1, use_restart=True, max_restarts=1):
 #def hill_climbing(city, max_iterations=4000, patience=800, min_delta=2, use_restart=False, max_restarts=0):
 def hill_climbing(city, max_iterations=5000, patience=500, min_delta=2, use_restart=True, max_restarts=1):
+    """
+    Hill Climbing algorithm with random restart for urban planning optimization.
 
+    Starts from a greedy solution and iteratively applies local moves (ADD, MOVE, 
+    CHANGE, REMOVE) to improve the score. Supports multiple restarts to escape 
+    local optima.
+
+    Args:
+        city: City instance containing grid, projects and constraints
+        max_iterations: Maximum number of iterations per restart
+        patience: Number of iterations without improvement before stopping
+        min_delta: Minimum score improvement to reset patience counter
+        use_restart: Whether to use random restarts
+        max_restarts: Number of restarts to perform if use_restart is True
+
+    Returns:
+        List of tuples (building_id, row, col) representing the best solution
+    """
     t0 = time.time()
     H, W, D = city.H, city.W, city.D
 
@@ -15,11 +32,13 @@ def hill_climbing(city, max_iterations=5000, patience=500, min_delta=2, use_rest
 
     # Single HC execution function
     def run_single_hc():
+        """Execute a single hill climbing run starting from a greedy solution."""
         occupied = set()  # tuples (r, c)
         influence_grid = defaultdict(lambda: defaultdict(int))  # (r,c) -> {service_type: count}
         placements = []  # [b_id, r, c, type, val]
 
         def get_influence_diamond(r, c, dist):
+            """Generate all cells within Manhattan distance 'dist' from position (r,c)."""
             for dr in range(-dist, dist + 1):
                 for dc in range(-dist, dist + 1):
                     if abs(dr) + abs(dc) > dist:
@@ -29,6 +48,7 @@ def hill_climbing(city, max_iterations=5000, patience=500, min_delta=2, use_rest
                         yield nr, nc
 
         def update_influence(proj, r, c, delta):
+            """Update influence grid when adding (delta=1) or removing (delta=-1) a utility."""
             if proj.build_type != "U": return
             s_type = proj.service_type
             affected = set()
@@ -43,6 +63,7 @@ def hill_climbing(city, max_iterations=5000, patience=500, min_delta=2, use_rest
                         del influence_grid[(nr, nc)]
 
         def calculate_score():
+            """Calculate total score as sum of (capacity * reachable service types) for all residentials."""
             total = 0
             for b_id, r, c, b_type, val in placements:
                 if b_type != "R":
@@ -55,6 +76,7 @@ def hill_climbing(city, max_iterations=5000, patience=500, min_delta=2, use_rest
             return total
 
         def can_place(proj, r, c):
+            """Check if a project can be placed at position (r,c) without conflicts."""
             if r < 0 or r + proj.h > H or c < 0 or c + proj.w > W:
                 return False
             for dr, dc in proj.hash_offsets:
@@ -63,6 +85,7 @@ def hill_climbing(city, max_iterations=5000, patience=500, min_delta=2, use_rest
             return True
 
         def place(b_id, r, c):
+            """Place a building at position (r,c) and update all data structures."""
             proj = city.get_project(b_id)
             if not can_place(proj, r, c):
                 return False
@@ -75,6 +98,7 @@ def hill_climbing(city, max_iterations=5000, patience=500, min_delta=2, use_rest
             return True
 
         def remove(idx):
+            """Remove a building at given index and update all data structures."""
             p = placements.pop(idx)
             b_id, r, c, b_type, val = p
             proj = city.get_project(b_id)
