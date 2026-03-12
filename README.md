@@ -1,37 +1,63 @@
-# CityCrafter
+# CityCrafter – City Plan Optimization (Group B)
 
-- [ ] Especificação do problema
-  - [ ] Descrição do problema
+- Luana Filipa de Matos Lima (up202206845)
+- Mariana Rocha Cristino (up202502528)
 
-- [ ] Trabalhos relacionados
+CityCrafter implements heuristics and metaheuristics to generate optimized city layouts. Algorithms included: Greedy, Hill Climbing, Simulated Annealing, Tabu Search, and Genetic Algorithm.
 
-- [X] Formulação do problema
-  - [X] representação da solução
-  - [X] função de avaliação
-  - [X] funções de vizinhança/mutação e crossover (nome, pré-condições, efeitos e custo)
-  - [X] restrições
+## Project Structure
 
-- [X] Implementation details
-  - [X] setup
+```
+CITYCRAFTER
+├── data/                  # Input datasets
+├── results/               # Generated metrics and results
+├── src/                   # Source code
+│   ├── algorithms/        # Algorithm implementations
+│   ├── utils/             # Metrics & visualization helpers
+│   ├── buildings.py
+│   ├── city.py
+│   ├── coordinates.py
+│   ├── read_file.py
+│   ├── main.py            # Main executable
+│   └── Prediction&Results.ipynb  # Notebook for results & prediction
+└── tests/                 # Additional test datasets
+```
 
-- [ ] Algoritmos
+## Requirements
 
-  - [X] Hill Climbing - M
-  - [ ] Simulated Annealing (+ Greedy ?) - L
-  - [X] Tabu Search - M
-  - [ ] Algoritmos Genéticos - Sábado
+* Python 3.10+
+* Python packages:
 
-- [ ] Report
-- [ ] Powerpoint (max 20 slides)
+```bash
+pip install numpy pandas scikit-learn matplotlib seaborn jupyter
+```
 
-- [ ] Resultados - sábado de manhã (ver o que extrair)
-  - [ ] Comparar Custo, tempo de execução, memória -> colocar as características dos datasets (por exemplo a distância, o números de edifícios)
+## Running the Program
 
-- Ideias do professor:
-- [ ] Mudar parâmetros dos algoritmos genéticos, por exemplo, a população ou função de crossover
-- [ ] Correr algumas vezes (se desse 5 a 15) e obter a média (realizar algum teste estatístico)
-- [ ] Tentar fazer algo inovador, ou seja, uma abordagem diferente do algoritmo genético ou mesmo algo super diferente
-- [ ] Comparar o nosso algoritmo genético com algum que exista de um package grande
-- [ ] Correr um modelo para ver qual o melhor algoritmo para cada dataset
-- [ ] Avaliação intra algoritmos e entre algoritmos (mudar parâmetros)
-- [ ] Procurar referências melhores
+Execute the main menu:
+
+```bash
+python3 src/main.py
+```
+
+The program will prompt you to select:
+
+1. **Algorithm** (`Greedy`, `Hill Climbing`, `Simulated Annealing`, `Tabu Search`, `Genetic`)
+2. **Dataset** (letters `a-j`)
+
+It will then generate a city layout and save results in the `results/` folder.
+
+## Results & Prediction
+
+All experimental analysis and predictive modeling are in the Jupyter Notebook:
+
+```bash
+jupyter notebook src/Prediction\&Results.ipynb
+```
+
+## Notes
+
+* **Greedy** is fast and resource-light
+* **Tabu Search** and **Simulated Annealing** achieve best solution quality
+* **Genetic Algorithm** is often inconsistent and time-consuming
+* The predictive model guides algorithm choice for new datasets
