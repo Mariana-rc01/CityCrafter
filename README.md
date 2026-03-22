@@ -1,6 +1,5 @@
-# CityCrafter – City Plan Optimization (Group B)
+# CityCrafter – City Plan Optimization (Group B) Luana Filipa de Matos Lima (up202206845)
 
-- Luana Filipa de Matos Lima (up202206845)
 - Mariana Rocha Cristino (up202502528)
 
 CityCrafter implements heuristics and metaheuristics to generate optimized city layouts. Algorithms included: Greedy, Hill Climbing, Simulated Annealing, Tabu Search, and Genetic Algorithm.
