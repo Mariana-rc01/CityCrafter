@@ -1,4 +1,6 @@
-# CityCrafter – City Plan Optimization (Group B)
+# CityCrafter – City Plan Optimization
+
+## Grade: 19.6/20 :star:
 
 - Luana Filipa de Matos Lima (up202206845)
 - Mariana Rocha Cristino (up202502528)
